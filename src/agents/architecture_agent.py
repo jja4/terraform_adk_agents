@@ -15,6 +15,8 @@ from src.tools.gcloud_tools import (
     list_available_regions,
     validate_service_compatibility
 )
+import logging
+logger = logging.getLogger(__name__)
 
 
 def create_architecture_agent(retry_config: types.HttpRetryOptions) -> LlmAgent:

@@ -10,6 +10,10 @@ from typing import Dict, Any
 from google.adk.agents import LlmAgent
 from google.adk.models.google_llm import Gemini
 from google.genai import types
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 
 def create_requirements_agent(retry_config: types.HttpRetryOptions) -> LlmAgent:

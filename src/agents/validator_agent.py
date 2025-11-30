@@ -17,7 +17,9 @@ from src.tools.terraform_tools import (
     terraform_plan,
     check_terraform_syntax
 )
+import logging
 
+logger = logging.getLogger(__name__)
 
 def create_validator_agent(retry_config: types.HttpRetryOptions) -> LlmAgent:
     """

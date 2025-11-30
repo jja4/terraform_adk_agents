@@ -12,6 +12,10 @@ from google.adk.agents import LlmAgent
 from google.adk.models.google_llm import Gemini
 from google.genai import types
 from src.schemas import DocumentationOutput
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 
 def create_documentation_agent(retry_config: types.HttpRetryOptions) -> LlmAgent:
@@ -37,36 +41,22 @@ def create_documentation_agent(retry_config: types.HttpRetryOptions) -> LlmAgent
         description="Creates comprehensive documentation including diagrams, README, and deployment guides.",
         instruction=r"""You are a technical writer for cloud infrastructure documentation.
 
-CRITICAL: Output ONLY valid JSON matching this schema:
-{
-  "readme": "string (REQUIRED - complete README.md markdown)"
-}
+Generate a complete README.md in markdown format for Terraform infrastructure.
 
-The README must include ALL sections:
-- Title and overview
-- Architecture description
-- Prerequisites
-- Deployment steps (terraform init, plan, apply)
-- Configuration guide
-- Usage examples
-- Security notes
-- Troubleshooting tips
+Output ONLY the raw markdown content - NO JSON, NO code blocks, NO explanations.
+Start directly with the markdown title.
 
-Rules:
-- Output ONLY a JSON object with a "readme" field
-- Use proper markdown formatting in the readme string
-- Keep it comprehensive but under 2000 words
-- Properly escape quotes, newlines, and special characters in JSON
-- Wrap output in ```json code block
+Include these sections (keep brief):
+1. # Title (infrastructure name)
+2. ## Overview (2-3 sentences)
+3. ## Architecture (bullet list of modules/services)
+4. ## Prerequisites (Terraform, GCP CLI, permissions)
+5. ## Deployment Steps (terraform init, plan, apply)
+6. ## Configuration (mention key variables and terraform.tfvars)
+7. ## Variables (list 3-5 key variables)
 
-Example output:
-```json
-{
-  "readme": "# Infrastructure Name\\n\\n## Overview\\n...\\n## Deployment\\n..."
-}
-```
-
-Now generate the documentation.""",
+Keep the entire README under 500 words.
+Output ONLY markdown - start with # title.""",
         tools=[]  # Pure LLM reasoning for documentation
     )
     
@@ -75,68 +65,46 @@ Now generate the documentation.""",
 
 def parse_documentation(agent_response: str) -> DocumentationOutput:
     """
-    Parse documentation from agent response using Pydantic validation.
+    Parse documentation from agent response.
     
     Args:
-        agent_response: Raw response from documentation agent
+        agent_response: Raw markdown response from documentation agent
         
     Returns:
         Validated DocumentationOutput object
-        
-    Raises:
-        ValueError: If the response cannot be parsed or validated
     """
     response = agent_response.strip()
     
-    print(f"\n[DEBUG] Raw response length: {len(response)} chars")
-    print(f"[DEBUG] First 300 chars: {response[:300]}")
+    logger.debug(f"\n[DEBUG] Raw response length: {len(response)} chars")
+    logger.debug(f"[DEBUG] First 200 chars: {response[:200]}")
     
-    # Extract JSON from markdown code blocks - find the LAST closing backticks
-    # to avoid stopping at code blocks inside the JSON
-    if '```json' in response:
-        json_start = response.find('```json') + 7
-        # Find the last occurrence of ``` to get the closing delimiter
-        json_end = response.rfind('```')
-        if json_end > json_start:
-            response = response[json_start:json_end].strip()
-            print(f"[DEBUG] Extracted from ```json block: {len(response)} chars")
-    elif '```' in response:
-        json_start = response.find('```') + 3
-        # Find the last occurrence of ``` to get the closing delimiter
-        json_end = response.rfind('```')
-        if json_end > json_start:
-            potential_json = response[json_start:json_end].strip()
-            if potential_json.startswith('{') or potential_json.startswith('['):
-                response = potential_json
-                print(f"[DEBUG] Extracted from ``` block: {len(response)} chars")
+    # Remove any markdown code blocks if present
+    if '```markdown' in response:
+        start = response.find('```markdown') + 11
+        end = response.find('```', start)
+        if end > start:
+            response = response[start:end].strip()
+            logger.debug(f"[DEBUG] Extracted from markdown block")
+    elif response.startswith('```') and '```' in response[3:]:
+        # Generic code block
+        start = response.find('```') + 3
+        end = response.rfind('```')
+        if end > start:
+            response = response[start:end].strip()
+            logger.debug(f"[DEBUG] Extracted from code block")
     
+    # Clean up the response
     response = response.strip()
     
-    # Debug: Show first 200 chars and last 100 chars of what we're trying to parse
-    print(f"[DEBUG] Final JSON to parse - Length: {len(response)} chars")
-    print(f"[DEBUG] First 200 chars: {response[:200]}...")
-    print(f"[DEBUG] Last 100 chars: ...{response[-100:]}")
+    # Validate it looks like markdown (starts with # or has markdown headers)
+    if not response.startswith('#') and '\n#' not in response:
+        logger.warning(f"⚠️  Response doesn't look like markdown, adding header")
+        response = "# Infrastructure Documentation\n\n" + response
     
-    try:
-        # Parse JSON - this will handle escaped strings correctly
-        data = json.loads(response)
-        # Validate with Pydantic
-        doc = DocumentationOutput(**data)
-        print(f"✅ Documentation parsed successfully ({len(doc.readme)} chars in README)")
-        return doc
-    except json.JSONDecodeError as e:
-        # Fallback: create minimal documentation
-        print(f"❌ JSON parsing failed: {str(e)}")
-        print(f"   Attempted to parse: {response[:300]}...")
-        return DocumentationOutput(
-            readme=f"# Infrastructure Documentation\n\n*Error generating full documentation*\n\nParse error: {str(e)[:200]}\n\nPlease re-run the generator for complete documentation."
-        )
-    except PydanticValidationError as e:
-        # Schema validation failed
-        print(f"❌ Pydantic validation failed: {str(e)}")
-        return DocumentationOutput(
-            readme=f"# Infrastructure Documentation\n\n*Error validating documentation schema*\n\nValidation error: {str(e)[:200]}\n\nPlease re-run the generator for complete documentation."
-        )
+    # Create DocumentationOutput with the markdown content
+    doc = DocumentationOutput(readme=response)
+    logger.info(f"✅ Documentation parsed successfully ({len(doc.readme)} chars in README)")
+    return doc
 
 
 def save_documentation_to_files(

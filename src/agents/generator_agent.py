@@ -11,6 +11,10 @@ from google.adk.agents import LlmAgent
 from google.adk.models.google_llm import Gemini
 from google.genai import types
 from src.tools.terraform_tools import terraform_fmt, check_terraform_syntax
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 
 def create_generator_agent(retry_config: types.HttpRetryOptions) -> LlmAgent:
@@ -275,4 +279,39 @@ def parse_generated_terraform(agent_response: str) -> Dict[str, Any]:
     try:
         return json.loads(response)
     except json.JSONDecodeError as e:
-        raise ValueError(f"Failed to parse generated Terraform JSON: {e}\nResponse: {response[:500]}...")
+        logger.error(f"⚠️  Initial JSON parsing failed at char {e.pos}: {e.msg}")
+        logger.error(f"[DEBUG] Error context: ...{response[max(0, e.pos-50):e.pos+50]}...")
+        
+        # Try to fix common issues
+        # 1. Missing comma between array/object elements
+        if "Expecting ',' delimiter" in str(e):
+            # Find the error position and try to add a comma
+            pos = e.pos
+            # Look backwards to find the end of the previous item
+            if pos > 0 and response[pos-1] in ['}', ']', '"']:
+                # Insert comma before the current position
+                response = response[:pos] + ',' + response[pos:]
+                logger.debug("[DEBUG] Attempted to add missing comma")
+                try:
+                    return json.loads(response)
+                except:
+                    pass
+        
+        # 2. Unterminated string - try to close it
+        if "Unterminated string" in str(e):
+            # Find unclosed strings and close the JSON
+            if response.count('"') % 2 == 1:
+                response = response.rstrip() + '"]}]}'
+                logger.debug("[DEBUG] Attempted to close unterminated string")
+                try:
+                    return json.loads(response)
+                except:
+                    pass
+        
+        # If all fixes fail, raise with helpful context
+        raise ValueError(
+            f"Failed to parse generated Terraform JSON: {e}\n"
+            f"Error at position {e.pos}: {e.msg}\n"
+            f"Context: ...{response[max(0, e.pos-100):min(len(response), e.pos+100)]}...\n"
+            f"First 500 chars: {response[:500]}"
+        )

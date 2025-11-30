@@ -8,10 +8,17 @@ Manages the message passing sequence between agents.
 import os
 import json
 import asyncio
+import logging
 from typing import Dict, Any, Optional
 from dotenv import load_dotenv
 from google.genai import types
-from google.adk.runners import InMemoryRunner
+from google.adk.runners import Runner
+
+# Suppress ADK debug warnings about unknown agents
+logging.getLogger('google.adk').setLevel(logging.ERROR)
+
+# Configure logger for this module
+logger = logging.getLogger(__name__)
 
 # Load environment variables from .env file
 load_dotenv()
@@ -65,13 +72,73 @@ class TerraformGeneratorOrchestrator:
         )
         
         # Initialize agents
-        print("🤖 Initializing agents...")
+        logger.info("Initializing agents...")
         self.requirements_agent = create_requirements_agent(self.retry_config)
         self.architecture_agent = create_architecture_agent(self.retry_config)
         self.generator_agent = create_generator_agent(self.retry_config)
         self.validator_agent = create_validator_agent(self.retry_config)
         self.documentation_agent = create_documentation_agent(self.retry_config)
-        print("✅ All agents initialized\n")
+        
+        # Initialize session service for memory persistence
+        logger.info("Initializing session service...")
+        from google.adk.sessions import InMemorySessionService
+        self.session_service = InMemorySessionService()
+        
+        # Create persistent runners with session service
+        # Each runner will maintain conversation history via session_id
+        # Using app_name="agents" to match the agent directory structure
+        self.requirements_runner = Runner(
+            agent=self.requirements_agent,
+            app_name="agents",
+            session_service=self.session_service
+        )
+        self.architecture_runner = Runner(
+            agent=self.architecture_agent,
+            app_name="agents",
+            session_service=self.session_service
+        )
+        self.generator_runner = Runner(
+            agent=self.generator_agent,
+            app_name="agents",
+            session_service=self.session_service
+        )
+        self.validator_runner = Runner(
+            agent=self.validator_agent,
+            app_name="agents",
+            session_service=self.session_service
+        )
+        self.documentation_runner = Runner(
+            agent=self.documentation_agent,
+            app_name="agents",
+            session_service=self.session_service
+        )
+        logger.info("All agents and session service initialized")
+    
+    async def _initialize_sessions(self):
+        """Create all sessions needed for the orchestration."""
+        user_id = "user"
+        app_name = "agents"
+        
+        # Create sessions for each agent
+        session_ids = ["requirements", "architecture", "validation_loop", "documentation"]
+        
+        for session_id in session_ids:
+            try:
+                await self.session_service.create_session(
+                    app_name=app_name,
+                    user_id=user_id,
+                    session_id=session_id
+                )
+            except Exception as e:
+                # Session might already exist, try to get it
+                try:
+                    await self.session_service.get_session(
+                        app_name=app_name,
+                        user_id=user_id,
+                        session_id=session_id
+                    )
+                except Exception:
+                    pass  # Session will be created on first use
     
     async def run(self, user_input: str) -> Dict[str, Any]:
         """
@@ -83,60 +150,63 @@ class TerraformGeneratorOrchestrator:
         Returns:
             Dictionary containing all outputs and metadata
         """
-        print("=" * 80)
-        print("🚀 TERRAFORM GENERATOR MULTI-AGENT SYSTEM")
-        print("=" * 80)
-        print(f"\n📝 User Input:\n{user_input}\n")
+        # Initialize sessions before running
+        await self._initialize_sessions()
+        
+        logger.info("="*80)
+        logger.info("TERRAFORM GENERATOR MULTI-AGENT SYSTEM")
+        logger.info("="*80)
+        logger.info(f"User Input: {user_input}")
         
         # Step 1: Requirements Extraction
-        print("-" * 80)
-        print("STEP 1: Requirements Extraction")
-        print("-" * 80)
+        logger.info("-"*80)
+        logger.info("STEP 1: Requirements Extraction")
+        logger.info("-"*80)
         requirements = await self._extract_requirements(user_input)
-        print(f"✅ Requirements extracted: {requirements.get('application_name', 'N/A')}")
-        print(f"   Components: {len(requirements.get('components', []))}")
+        logger.info(f"Requirements extracted: {requirements.get('application_name', 'N/A')}")
+        logger.info(f"Components: {len(requirements.get('components', []))}")
         
         # Step 2: Architecture Design
-        print("\n" + "-" * 80)
-        print("STEP 2: Architecture Design")
-        print("-" * 80)
+        logger.info("-"*80)
+        logger.info("STEP 2: Architecture Design")
+        logger.info("-"*80)
         architecture = await self._design_architecture(requirements)
-        print(f"✅ Architecture designed: {architecture.get('architecture_name', 'N/A')}")
-        print(f"   Modules: {len(architecture.get('modules', []))}")
+        logger.info(f"Architecture designed: {architecture.get('architecture_name', 'N/A')}")
+        logger.info(f"Modules: {len(architecture.get('modules', []))}")
         
-        # Step 3: Terraform Generation
-        print("\n" + "-" * 80)
-        print("STEP 3: Terraform Code Generation")
-        print("-" * 80)
+        # Step 3: Terraform Code Generation
+        logger.info("-"*80)
+        logger.info("STEP 3: Terraform Code Generation")
+        logger.info("-"*80)
         terraform_code = await self._generate_terraform(architecture)
-        print(f"✅ Terraform code generated")
-        print(f"   Files: {len(terraform_code.get('files', []))}")
+        logger.info(f"Terraform code generated")
+        logger.info(f"Files: {len(terraform_code.get('files', []))}")
         
         # Step 4: Validation Loop
-        print("\n" + "-" * 80)
-        print("STEP 4: Validation Loop")
-        print("-" * 80)
+        logger.info("-"*80)
+        logger.info("STEP 4: Validation Loop")
+        logger.info("-"*80)
         validated_code, validation_results = await self._validation_loop(
             terraform_code, architecture
         )
         
         if validation_results.validation_status == "passed":
-            print("✅ Validation PASSED")
+            logger.info("✅ Validation PASSED")
         else:
-            print(f"❌ Validation FAILED: {validation_results.error_count} errors")
-            print("\nErrors:")
+            logger.error(f"❌ Validation FAILED: {validation_results.error_count} errors")
+            logger.error("\nErrors:")
             for error in validation_results.errors[:3]:  # Show first 3
-                print(f"  - {error.file}: {error.message}")
-            print("\n⚠️  Proceeding with documentation generation despite errors...")
+                logger.error(f"  - {error.file}: {error.message}")
+            logger.error("\n⚠️  Proceeding with documentation generation despite errors...")
         
         # Step 5: Documentation (even if validation failed - document what we have)
-        print("\n" + "-" * 80)
-        print("STEP 5: Documentation Generation")
-        print("-" * 80)
+        logger.info("\n" + "-" * 80)
+        logger.info("STEP 5: Documentation Generation")
+        logger.info("-" * 80)
         documentation = await self._generate_documentation(
             architecture, validated_code, validation_results
         )
-        print("✅ Documentation generated")
+        logger.info("✅ Documentation generated")
         
         # Save all outputs
         self._save_terraform_files(validated_code)
@@ -144,38 +214,38 @@ class TerraformGeneratorOrchestrator:
         
         # Count module and environment files
         # Final summary
-        print("\n" + "=" * 80)
-        print("🎉 GENERATION COMPLETE")
-        print("=" * 80)
-        print(f"📁 Output directory: {self.output_dir}")
+        logger.info("\n" + "-" * 80)
+        logger.info("🎉 GENERATION COMPLETE")
+        logger.info("-" * 80)
+        logger.info(f"📁 Output directory: {self.output_dir}")
         
         module_count = len(validated_code.get("modules", []))
         env_count = len(validated_code.get("environments", {}))
         
         if module_count > 0:
-            print(f"\n📦 Module Structure:")
-            print(f"   - Reusable modules: {module_count}")
+            logger.info(f"\n📦 Module Structure:")
+            logger.info(f"   - Reusable modules: {module_count}")
             for module in validated_code.get("modules", []):
                 module_name = module.get("module_name", "unknown")
-                print(f"     • modules/{module_name}/")
+                logger.info(f"     • modules/{module_name}/")
         
         if env_count > 0:
-            print(f"\n🌍 Environments:")
+            logger.info(f"\n🌍 Environments:")
             for env_name in validated_code.get("environments", {}).keys():
-                print(f"   - environments/{env_name}/")
+                logger.info(f"   - environments/{env_name}/")
         
-        print(f"\n📄 Documentation: {len(saved_docs)} files")
-        print("=" * 80)
+        logger.info(f"\n📄 Documentation: {len(saved_docs)} files")
+        logger.info("-" * 80)
         
         # Final summary
-        print("\n" + "=" * 80)
-        print("🎉 GENERATION COMPLETE")
-        print("=" * 80)
-        print(f"📁 Output directory: {self.output_dir}")
-        print(f"   - Terraform modules: {module_count}")
-        print(f"   - Terraform environments: {env_count}")
-        print(f"   - Documentation files: {len(saved_docs)}")
-        print("=" * 80)
+        logger.info("\n" + "-" * 80)
+        logger.info("🎉 GENERATION COMPLETE")
+        logger.info("-" * 80)
+        logger.info(f"📁 Output directory: {self.output_dir}")
+        logger.info(f"   - Terraform modules: {module_count}")
+        logger.info(f"   - Terraform environments: {env_count}")
+        logger.info(f"   - Documentation files: {len(saved_docs)}")
+        logger.info("-" * 80)
         
         return {
             "requirements": requirements,
@@ -188,11 +258,23 @@ class TerraformGeneratorOrchestrator:
     
     async def _extract_requirements(self, user_input: str) -> Dict[str, Any]:
         """Extract requirements from user input."""
-        runner = InMemoryRunner(agent=self.requirements_agent, app_name="terraform_generator")
-        response = await runner.run_debug(user_input)
+        from google.genai import types
         
-        # Extract text from response
-        response_text = self._extract_response_text(response)
+        query_content = types.Content(
+            role="user",
+            parts=[types.Part(text=user_input)]
+        )
+        
+        events = []
+        async for event in self.requirements_runner.run_async(
+            user_id="user",
+            session_id="requirements",
+            new_message=query_content
+        ):
+            events.append(event)
+        
+        # Extract text from events
+        response_text = self._extract_response_text(events)
         return parse_requirements(response_text)
     
     async def _design_architecture(self, requirements: Dict[str, Any]) -> Dict[str, Any]:
@@ -203,10 +285,21 @@ class TerraformGeneratorOrchestrator:
 
 Output the complete architecture specification in JSON format."""
         
-        runner = InMemoryRunner(agent=self.architecture_agent, app_name="terraform_generator")
-        response = await runner.run_debug(prompt)
+        from google.genai import types
+        query_content = types.Content(
+            role="user",
+            parts=[types.Part(text=prompt)]
+        )
         
-        response_text = self._extract_response_text(response)
+        events = []
+        async for event in self.architecture_runner.run_async(
+            user_id="user",
+            session_id="architecture",
+            new_message=query_content
+        ):
+            events.append(event)
+        
+        response_text = self._extract_response_text(events)
         return parse_architecture(response_text)
     
     async def _generate_terraform(self, architecture: Dict[str, Any]) -> Dict[str, Any]:
@@ -217,10 +310,22 @@ Output the complete architecture specification in JSON format."""
 
 Output all Terraform files in JSON format with proper structure."""
         
-        runner = InMemoryRunner(agent=self.generator_agent, app_name="terraform_generator")
-        response = await runner.run_debug(prompt)
+        from google.genai import types
+        query_content = types.Content(
+            role="user",
+            parts=[types.Part(text=prompt)]
+        )
         
-        response_text = self._extract_response_text(response)
+        # Use shared session_id with validator for validation loop memory
+        events = []
+        async for event in self.generator_runner.run_async(
+            user_id="user",
+            session_id="validation_loop",
+            new_message=query_content
+        ):
+            events.append(event)
+        
+        response_text = self._extract_response_text(events)
         return parse_generated_terraform(response_text)
     
     async def _validation_loop(
@@ -237,52 +342,63 @@ Output all Terraform files in JSON format with proper structure."""
         current_code = terraform_code
         iteration = 0
         
-        print(f"\n{'='*80}")
-        print(f"🔍 VALIDATION LOOP (max {self.max_validation_iterations} iterations)")
-        print(f"{'='*80}")
+        logger.info(f"\n{'-'*80}")
+        logger.info(f"🔍 VALIDATION LOOP (max {self.max_validation_iterations} iterations)")
+        logger.info(f"   🧠 Generator & Validator share session 'validation_loop' for memory")
+        logger.info(f"{'-'*80}")
         
         while iteration < self.max_validation_iterations:
             iteration += 1
-            print(f"\n🔄 Iteration {iteration}/{self.max_validation_iterations}")
+            logger.info(f"\n🔄 Iteration {iteration}/{self.max_validation_iterations}")
             
             # Validate current code
             validation_results = await self._validate_terraform(current_code)
             
             # Check if we should regenerate
             if not should_regenerate(validation_results):
-                print(f"\n✅ Validation PASSED on iteration {iteration}!")
-                print(f"{'='*80}")
+                logger.info(f"\n✅ Validation PASSED on iteration {iteration}!")
+                logger.info(f"{'-'*80}")
                 return current_code, validation_results
             
             # If this was the last iteration, return anyway
             if iteration >= self.max_validation_iterations:
-                print(f"\n⚠️  Max iterations ({self.max_validation_iterations}) reached. Stopping validation loop.")
-                print(f"   Errors remaining: {len(validation_results.errors)}")
-                print(f"{'='*80}")
+                logger.warning(f"\n⚠️  Max iterations ({self.max_validation_iterations}) reached. Stopping validation loop.")
+                logger.error(f"   Errors remaining: {len(validation_results.errors)}")
+                logger.info(f"{'-'*80}")
                 return current_code, validation_results
             
             # Generate feedback and regenerate
-            print(f"❌ Validation failed with {len(validation_results.errors)} errors.")
-            print(f"   Preparing to regenerate code with feedback...")
+            logger.error(f"❌ Validation failed with {len(validation_results.errors)} errors.")
+            logger.info(f"   Preparing to regenerate code with feedback...")
             feedback = get_feedback_for_regeneration(validation_results)
             
+            # Generator session will remember previous attempts and feedback
             regenerate_prompt = f"""The previous Terraform code had validation errors. Please fix them.
 
-ORIGINAL ARCHITECTURE:
-{json.dumps(architecture, indent=2)}
-
-PREVIOUS CODE:
-{json.dumps(current_code, indent=2)}
-
-VALIDATION FEEDBACK {iteration}/{self.max_validation_iterations}:
+VALIDATION FEEDBACK:
 {feedback}
 
 Generate corrected Terraform code that addresses all the issues above.
-Output the corrected code in JSON format."""
+Output the corrected code in JSON format.
+
+Note: You have session memory of previous attempts - use it to avoid repeating the same mistakes."""
             
-            runner = InMemoryRunner(agent=self.generator_agent, app_name="terraform_generator")
-            response = await runner.run_debug(regenerate_prompt)
-            response_text = self._extract_response_text(response)
+            from google.genai import types
+            query_content = types.Content(
+                role="user",
+                parts=[types.Part(text=regenerate_prompt)]
+            )
+            
+            # Use shared session_id - generator will remember previous attempts
+            events = []
+            async for event in self.generator_runner.run_async(
+                user_id="user",
+                session_id="validation_loop",
+                new_message=query_content
+            ):
+                events.append(event)
+            
+            response_text = self._extract_response_text(events)
             current_code = parse_generated_terraform(response_text)
         
         # Should not reach here, but just in case
@@ -296,10 +412,22 @@ Output the corrected code in JSON format."""
 
 Provide detailed feedback in JSON format matching the ValidatorOutput schema."""
         
-        runner = InMemoryRunner(agent=self.validator_agent, app_name="terraform_generator")
-        response = await runner.run_debug(prompt)
+        from google.genai import types
+        query_content = types.Content(
+            role="user",
+            parts=[types.Part(text=prompt)]
+        )
         
-        response_text = self._extract_response_text(response)
+        # Use shared session_id - validator will remember previous validations
+        events = []
+        async for event in self.validator_runner.run_async(
+            user_id="user",
+            session_id="validation_loop",
+            new_message=query_content
+        ):
+            events.append(event)
+        
+        response_text = self._extract_response_text(events)
         return parse_validation_results(response_text)
     
     async def _generate_documentation(
@@ -319,33 +447,32 @@ Provide detailed feedback in JSON format matching the ValidatorOutput schema."""
             "environment": architecture.get("environment", "production")
         }
         
-        prompt = f"""Generate a comprehensive README.md for this Terraform infrastructure.
+        prompt = f"""Generate a README.md for this Terraform infrastructure.
 
 Architecture: {arch_summary['name']}
 Modules: {', '.join(arch_summary['modules'])}
 Environment: {arch_summary['environment']}
-Validation Status: {validation_dict.get('validation_status', 'unknown')}
 
-Include sections for: Overview, Architecture, Prerequisites, Deployment Steps, Configuration, Security, and Troubleshooting.
-
-Output JSON with only a 'readme' field containing the complete markdown content."""
+Output ONLY markdown content (no JSON, no code blocks).
+Start with # title and include: Overview, Architecture, Prerequisites, Deployment Steps, Configuration.
+Keep it under 500 words."""
         
-        runner = InMemoryRunner(agent=self.documentation_agent, app_name="terraform_generator")
-        response = await runner.run_debug(prompt)
+        from google.genai import types
+        query_content = types.Content(
+            role="user",
+            parts=[types.Part(text=prompt)]
+        )
         
-        # Don't extract here - let parse_documentation handle it
-        # to avoid double extraction that corrupts the JSON
-        if isinstance(response, list):
-            text_parts = []
-            for event in response:
-                if hasattr(event, 'content') and event.content:
-                    if hasattr(event.content, 'parts') and event.content.parts:
-                        for part in event.content.parts:
-                            if hasattr(part, 'text') and part.text:
-                                text_parts.append(part.text)
-            response_text = '\n'.join(text_parts) if text_parts else str(response)
-        else:
-            response_text = str(response)
+        events = []
+        async for event in self.documentation_runner.run_async(
+            user_id="user",
+            session_id="documentation",
+            new_message=query_content
+        ):
+            events.append(event)
+        
+        # Extract text from events
+        response_text = self._extract_response_text(events)
         
         return parse_documentation(response_text)
     
