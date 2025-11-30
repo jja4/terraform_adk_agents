@@ -1,4 +1,4 @@
-# Terraform Generator Multi-Agent System
+# Multi-Agent System for Generating GCP Terraform Code
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Google ADK](https://img.shields.io/badge/Google-ADK-4285F4?logo=google)](https://google.github.io/adk-docs/)
@@ -7,15 +7,13 @@
 
 A sophisticated multi-agent system built with Google ADK that generates GCP Terraform infrastructure code from natural language descriptions.
 
-> 🏆 **Built for Kaggle 5-Day AI Agents Competition** - Demonstrating advanced multi-agent orchestration and tool integration
-> 
 > 🔒 **Safe by Design** - Generates code only, never executes infrastructure changes. See [SECURITY.md](SECURITY.md)
 > 
 > ⚠️ **Testing Recommended** - Generated code is validated for syntax but should be tested in an isolated GCP project before production use. See [TESTING.md](TESTING.md)
 
 ## 🎯 Overview
 
-This project demonstrates a multi-agent architecture where specialized agents collaborate to:
+This project demonstrates a multi-agent architecture where individual agents collaborate to:
 1. Extract requirements from natural language descriptions
 2. Design GCP infrastructure architecture
 3. Generate Terraform code
@@ -288,7 +286,7 @@ Contributions welcome! To contribute:
 
 1. **Fork and clone**
    ```bash
-   git clone https://github.com/yourusername/terraform-generator-agents.git
+   git clone https://github.com/jja4/terraform-generator-agents.git
    cd terraform-generator-agents
    ```
 
@@ -314,11 +312,3 @@ Contributions welcome! To contribute:
 - Add docstrings to all functions
 - Test with multiple scenarios
 - Update documentation for new features
-
-## 📝 License
-
-MIT License
-
-## 🙏 Acknowledgments
-
-Built as part of the Kaggle 5-Day AI Agents Competition demonstrating Google ADK capabilities.
