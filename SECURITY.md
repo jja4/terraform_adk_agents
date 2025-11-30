@@ -9,9 +9,7 @@ This project is designed to be **safe by default** - it generates Terraform code
 ✅ **Safe Operations:**
 - Parses natural language descriptions
 - Generates Terraform `.tf` files
-- Formats code with `terraform fmt` (local operation, no cloud access)
-- Validates syntax with `terraform validate` (local operation, no cloud access)  
-- Runs `terraform plan` (dry-run only, no infrastructure changes)
+- Validates code syntax and structure
 - Creates documentation
 
 ❌ **What It NEVER Does:**
@@ -20,44 +18,18 @@ This project is designed to be **safe by default** - it generates Terraform code
 - Make any changes to your cloud infrastructure
 - Store or transmit sensitive data
 
-## Tool Safety Analysis
-
-### Terraform Tools (`src/tools/terraform_tools.py`)
-
-| Tool | What It Does | Requires Credentials? | Makes Cloud Changes? |
-|------|--------------|----------------------|---------------------|
-| `terraform_fmt` | Formats code locally in temp directory | ❌ No | ❌ No |
-| `terraform_validate` | Validates syntax locally | ❌ No | ❌ No |
-| `terraform_plan` | Dry-run simulation | ❌ No | ❌ No |
-| `check_terraform_syntax` | Basic syntax checks in Python | ❌ No | ❌ No |
-
-**All operations use temporary directories that are automatically cleaned up.**
-
-### GCloud Tools (`src/tools/gcloud_tools.py`)
-
-| Tool | What It Does | Requires Credentials? | Makes Cloud Changes? |
-|------|--------------|----------------------|---------------------|
-| `check_gcp_service_availability` | Returns mock/hardcoded data | ❌ No | ❌ No |
-| `list_available_regions` | Returns mock/hardcoded data | ❌ No | ❌ No |
-| `validate_service_compatibility` | Returns mock/hardcoded data | ❌ No | ❌ No |
-
-**Note:** The gcloud tools currently return mock data and do NOT make actual API calls. They simulate service checks for the agents to make informed architecture decisions.
-
 ## Credentials
 
 ### What You Need
 
-- **Gemini API Key** (`GOOGLE_API_KEY`) - For the LLM agents only
-[API key in Google AI Studio](https://aistudio.google.com/app/api-keys)
-
-- **GCP Project ID** (`GOOGLE_CLOUD_PROJECT`) - Used in generated Terraform code as a variable
+- **Gemini API Key** (`GOOGLE_API_KEY`) - For LLM agents ([Get from Google AI Studio](https://aistudio.google.com/app/api-keys))
+- **GCP Project ID** (`GOOGLE_CLOUD_PROJECT`) - Used in generated Terraform code
 
 ### What You DON'T Need
 
 - ❌ GCP service account keys
-- ❌ GCP application default credentials  
+- ❌ GCP application default credentials
 - ❌ Terraform backend credentials
-- ❌ Cloud SQL passwords (used only in generated code examples)
 
 ## Generated Code Safety
 
@@ -103,18 +75,12 @@ terraform plan
 ```
 
 ### Credential Management
-[API key in Google AI Studio](https://aistudio.google.com/app/api-keys)
 
 ```bash
 # Only set what's needed for generation
 export GOOGLE_API_KEY="your-gemini-api-key"
 export GOOGLE_CLOUD_PROJECT="test-project-123"
-
-# Don't set these (not needed for generation):
-# export GOOGLE_APPLICATION_CREDENTIALS="..." 
-# export GOOGLE_CREDENTIALS="..."
 ```
-[API key in Google AI Studio](https://aistudio.google.com/app/api-keys)
 ### Code Review
 
 Always review generated code:
@@ -129,33 +95,6 @@ cat output/demo_TIMESTAMP/environments/prod/main.tf
 # Look for sensitive values
 grep -r "password\|secret\|key" output/demo_TIMESTAMP/
 ```
-
-## Limitations
-
-### Mock Data
-
-The gcloud tools currently return **mock data** rather than making real API calls:
-
-- Service availability checks return hardcoded common services
-- Region lists return predefined common regions
-- Compatibility checks use hardcoded rules
-
-**Why?** This approach is safer and doesn't require GCP credentials during code generation.
-
-**Future Enhancement:** Could be updated to make real `gcloud` API calls if credentials are available, but would remain read-only operations.
-
-### Terraform Commands
-
-Terraform commands run in isolated temporary directories:
-
-- `terraform init` downloads providers locally
-- `terraform validate` checks syntax only
-- `terraform plan` simulates changes (read-only, no state file needed)
-
-These commands **cannot** make infrastructure changes without:
-1. Running `terraform apply` (which this system never does)
-2. Having valid GCP credentials configured
-3. Having appropriate IAM permissions
 
 ## Reporting Security Issues
 

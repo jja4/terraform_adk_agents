@@ -10,11 +10,6 @@ from typing import Dict, Any
 from google.adk.agents import LlmAgent
 from google.adk.models.google_llm import Gemini
 from google.genai import types
-from src.tools.gcloud_tools import (
-    check_gcp_service_availability,
-    list_available_regions,
-    validate_service_compatibility
-)
 import logging
 logger = logging.getLogger(__name__)
 
@@ -49,18 +44,12 @@ Your task is to receive infrastructure requirements and design a comprehensive a
 **Input:** You will receive a JSON requirements specification.
 
 **Your responsibilities:**
-1. Validate service compatibility using the check_gcp_service_availability and validate_service_compatibility tools
-2. Design the overall architecture topology
-3. Determine Terraform module structure
-4. Define resource dependencies
-5. Plan network architecture
-6. Consider security and IAM requirements
-7. Output a detailed architecture plan in JSON format
-
-**Use the available tools:**
-- `check_gcp_service_availability(service_name, region)`: Check if a service is available in a region
-- `list_available_regions(service_type)`: Get list of available regions for a service
-- `validate_service_compatibility(primary_service, secondary_service)`: Check if two services work together
+1. Design the overall architecture topology
+2. Determine Terraform module structure
+3. Define resource dependencies
+4. Plan network architecture
+5. Consider security and IAM requirements
+6. Output a detailed architecture plan in JSON format
 
 **Output JSON structure:**
 {
@@ -104,9 +93,7 @@ Your task is to receive infrastructure requirements and design a comprehensive a
 - Include monitoring and logging where appropriate
 - Use regional resources for high availability
 
-Always output valid JSON immediately. Assume all GCP services are available.
-
-**CRITICAL: Just analyze requirements and output JSON. Do not use any tools.**
+Always output valid JSON immediately. Assume all GCP services are available and compatible.
 """
     )
     

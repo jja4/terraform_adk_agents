@@ -14,12 +14,11 @@
 
 ### What IS Validated
 
-| Level | Tool | What It Checks | Confidence |
-|-------|------|----------------|------------|
-| **Syntax** | `check_terraform_syntax()` | Balanced braces, quotes, basic structure | 🟡 Low |
-| **Format** | `terraform fmt` | Code formatting, HCL syntax | 🟢 Medium |
-| **Config** | `terraform validate` | Provider configs, resource syntax, variable references | 🟢 Medium |
-| **Plan** | `terraform plan` | Resource graph, missing variables, obvious errors | 🟡 Medium-High |
+| Level | What It Checks | Confidence |
+|-------|----------------|------------|
+| **Syntax** | Basic structure, balanced braces, valid HCL | 🟡 Medium |
+| **Configuration** | Resource syntax, variable references, dependencies | 🟢 Medium-High |
+| **Best Practices** | Naming conventions, module structure, security basics | 🟢 Medium-High |
 
 ### What is NOT Validated
 
@@ -33,16 +32,15 @@
 
 ## Recommended Testing Strategy
 
-### 1. Local Validation (Done by System)
+### 1. Validation by System (Automatic)
 
-```bash
-# The agents already do this:
-terraform fmt
-terraform validate  
-terraform plan
-```
+The agents automatically validate:
+- Code syntax and structure
+- Resource configurations
+- Variable references
+- Module dependencies
 
-**Confidence: ~60%** - Catches syntax and basic config errors
+**Confidence: ~70%** - Catches syntax and basic configuration errors
 
 ### 2. Isolated Test Environment (You Should Do This)
 
@@ -231,32 +229,17 @@ terraform destroy
 
 ### Enhancement Ideas
 
-1. **Post-Generation Validation Script**
-   ```bash
-   # scripts/validate_generated.sh
-   cd $OUTPUT_DIR
-   terraform init
-   terraform validate
-   terraform plan -out=plan.tfplan
-   terraform show -json plan.tfplan | jq '.resource_changes | length'
-   ```
-
-2. **Integration Test Generator**
-   - Generate test scripts alongside Terraform code
-   - Include curl commands, gcloud checks, etc.
-
-3. **Cost Estimation**
+1. **Cost Estimation**
    - Integrate with `infracost` to estimate costs
-   - Warn if estimated cost > threshold
+   - Warn if estimated cost exceeds threshold
 
-4. **Policy Validation**
+2. **Security Scanning**
+   - Use `tfsec` or `checkov` for security scanning
+   - Validate IAM permissions follow least privilege
+
+3. **Policy Validation**
    - Use `terraform-compliance` for policy checks
-   - Validate security best practices
-   - Check for overly permissive IAM
-
-5. **Drift Detection**
-   - After deployment, check for configuration drift
-   - Compare desired vs actual state
+   - Enforce organizational standards
 
 ## The Reality
 

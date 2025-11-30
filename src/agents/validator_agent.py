@@ -12,11 +12,6 @@ from google.adk.agents import LlmAgent
 from google.adk.models.google_llm import Gemini
 from google.genai import types
 from src.schemas import ValidatorOutput, ValidationError
-from src.tools.terraform_tools import (
-    terraform_validate,
-    terraform_plan,
-    check_terraform_syntax
-)
 import logging
 
 logger = logging.getLogger(__name__)

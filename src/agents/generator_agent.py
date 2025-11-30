@@ -10,7 +10,6 @@ from typing import Dict, Any
 from google.adk.agents import LlmAgent
 from google.adk.models.google_llm import Gemini
 from google.genai import types
-from src.tools.terraform_tools import terraform_fmt, check_terraform_syntax
 import logging
 
 logger = logging.getLogger(__name__)
@@ -52,13 +51,8 @@ Your task is to receive an architecture specification and generate complete, pro
 3. Define variables and outputs
 4. Include proper resource dependencies
 5. Use Terraform best practices
-6. Format code using the terraform_fmt tool
-7. Validate basic syntax using check_terraform_syntax
-8. Output structured JSON with all generated files (REQUIRED)
-
-**Use the available tools:**
-- `terraform_fmt(code)`: Format Terraform code according to standard conventions
-- `check_terraform_syntax(code)`: Validate basic syntax before final output
+6. Ensure code follows standard formatting conventions
+7. Output structured JSON with all generated files (REQUIRED)
 
 **Terraform Best Practices to Follow:**
 1. **Naming Conventions**: Use lowercase with underscores (snake_case)
@@ -69,6 +63,7 @@ Your task is to receive an architecture specification and generate complete, pro
 6. **Labels**: Include labels for resource organization
 7. **Modules**: Keep modules focused and reusable
 8. **Versions**: Specify provider versions
+9. **Formatting**: Use proper indentation (2 spaces) and spacing
 
 **Output JSON Structure:**
 {

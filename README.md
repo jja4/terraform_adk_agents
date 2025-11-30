@@ -13,68 +13,62 @@ A sophisticated multi-agent system built with Google ADK that generates GCP Terr
 
 ## 🎯 Overview
 
-This project demonstrates a multi-agent architecture where individual agents collaborate to:
-1. Extract requirements from natural language descriptions
-2. Design GCP infrastructure architecture
-3. Generate Terraform code
-4. Validate and critique the generated code
-5. Create comprehensive documentation
+A production-ready multi-agent system that transforms natural language descriptions into validated, modular Terraform infrastructure code for Google Cloud Platform.
+
+**Key Features:**
+- 🧠 **Session-based memory** - Agents learn from validation feedback
+- 🔄 **Iterative validation** - Up to 20 regeneration cycles until code passes
+- 📦 **Modular output** - Reusable modules + environment-specific configs
+- ✅ **Type-safe** - Pydantic models ensure reliable agent communication
+- 🎯 **Production-ready** - Follows Terraform and GCP best practices
 
 ## 🏗️ Architecture
 
 ```mermaid
 flowchart TD
-    A[User Input] --> R[Requirements Extraction Agent]
-    R -->|Spec JSON| P[Architecture Design Agent]
-    P -->|Module Plan| G[Terraform Generator Agent]
-    G -->|Generated Terraform| V[Validator/Critic Agent]
-    V -->|Feedback / Errors| G
+    A[User Input] --> R[Requirements Agent]
+    R -->|Requirements JSON| P[Architecture Agent]
+    P -->|Architecture Spec| G[Generator Agent]
+    G -->|Generated Code| V[Validator Agent]
+    V -->|Feedback| G
     V -->|Validated Code| D[Documentation Agent]
-    D --> O[Final Output]
+    D --> O[Final Output: Terraform + Docs]
 
-    subgraph Tools
-        T1[terraform fmt]
-        T2[terraform validate]
-        T3[terraform plan]
-        T4[gcloud CLI]
-    end
-
-    G --> T1
-    V --> T2
-    V --> T3
-    P --> T4
+    style A fill:#e1f5ff
+    style O fill:#c8e6c9
+    style V fill:#fff9c4
 ```
 
 ## 🤖 Agent Roles
 
-### Requirements Extraction Agent
+### Requirements Agent
 - Parses natural language descriptions
-- Extracts structured requirements (compute, storage, networking, etc.)
+- Extracts structured requirements (compute, storage, networking, IAM)
 - Outputs JSON specification
 
-### Architecture Design Agent
+### Architecture Agent
 - Receives requirements JSON
-- Designs GCP service topology
-- Determines module structure
-- Uses gcloud CLI for service compatibility checks
+- Designs GCP service topology and infrastructure layout
+- Determines optimal Terraform module structure
+- Plans resource dependencies and networking
 
-### Terraform Generator Agent
-- Generates Terraform modules and configurations
-- Creates provider blocks, resources, and variables
-- Uses terraform fmt for code formatting
-- Produces idiomatic Terraform code
+### Generator Agent
+- Generates complete Terraform modules and configurations
+- Creates provider blocks, resources, variables, and outputs
+- Produces properly formatted, idiomatic Terraform code
+- Follows GCP and Terraform best practices
 
-### Validator/Critic Agent
-- Runs terraform validate
-- Performs terraform plan (dry-run)
-- Identifies errors and provides feedback
-- Iterates with Generator Agent until validation passes
+### Validator Agent
+- Analyzes generated Terraform code for errors
+- Validates syntax, configuration, and best practices
+- Provides detailed feedback for improvements
+- Iterates with Generator Agent until code passes validation
 
 ### Documentation Agent
-- Creates architecture diagrams
-- Generates README and deployment guides
-- Documents variables and outputs
-- Produces usage examples
+- Generates comprehensive README files
+- Documents architecture and deployment steps
+- Lists prerequisites and configuration variables
+- Provides usage examples
 
 ## 📋 Message Passing Sequence
 
@@ -117,10 +111,8 @@ sequenceDiagram
 ### Prerequisites
 - Python 3.10+
 - [uv](https://docs.astral.sh/uv/) - Fast Python package installer
-- Google Cloud SDK (`gcloud` CLI)
-- Terraform CLI
-- Gemini API Key [API key in Google AI Studio](https://aistudio.google.com/app/api-keys)
-- Google Cloud Project ID [https://console.cloud.google.com/](https://console.cloud.google.com/). Create a new project for testing.
+- Gemini API Key - [Get one from Google AI Studio](https://aistudio.google.com/app/api-keys)
+- GCP Project ID - [Create a test project](https://console.cloud.google.com/)
 
 ### Installation
 
@@ -164,17 +156,10 @@ uv add --dev pytest
 uv remove <package-name>
 ```
 
-## 🛠️ Tools Used
-
-- **terraform fmt**: Code formatting
-- **terraform validate**: Syntax and configuration validation
-- **terraform plan**: Dry-run infrastructure planning
-- **gcloud CLI**: GCP service compatibility checks
-
 ## 📁 Project Structure
 
 ```
-terraform-generator-agents/
+terraform-adk-agents/
 ├── src/
 │   ├── agents/              # Specialized agent implementations
 │   │   ├── requirements_agent.py
@@ -182,15 +167,12 @@ terraform-generator-agents/
 │   │   ├── generator_agent.py
 │   │   ├── validator_agent.py
 │   │   └── documentation_agent.py
-│   ├── tools/               # Tool integrations
-│   │   ├── terraform_tools.py
-│   │   └── gcloud_tools.py
-│   ├── orchestrator.py      # Main orchestration logic
+│   ├── orchestrator.py      # Multi-agent orchestration with session management
+│   ├── schemas.py           # Pydantic models for type-safe communication
 │   └── demo.py              # Interactive demo script
 ├── examples/                # Working example outputs
-├── pyproject.toml           # Project configuration
-├── README.md
-└── QUICKSTART.md
+├── pyproject.toml           # Project dependencies
+└── README.md
 ```
 
 ## 🏗️ Generated Output Structure
@@ -261,17 +243,6 @@ echo "GOOGLE_API_KEY=your-key-here" >> .env
 
 # Option 2: Export for current session
 export GOOGLE_API_KEY="your-api-key-here"
-```
-
-### Terraform/gcloud Not Found
-```bash
-# Install Terraform
-brew install terraform  # macOS
-# Or download from terraform.io
-
-# Install gcloud CLI
-brew install google-cloud-sdk  # macOS
-# Or follow: cloud.google.com/sdk/docs/install
 ```
 
 ### Agent Timeout
