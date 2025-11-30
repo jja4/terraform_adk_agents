@@ -1,0 +1,12 @@
+# Copy this file to terraform.tfvars and fill in your values
+project_id   = "your-gcp-project-id"
+region       = "us-central1"
+db_password  = "your-secure-password-here"
+
+# Optional: Override defaults
+# network_name     = "web-app-network"
+# service_name     = "web-api-service"
+# container_image  = "gcr.io/your-project/your-image:tag"
+# db_instance_name = "web-app-db"
+# database_name    = "appdb"
+# db_user          = "appuser"

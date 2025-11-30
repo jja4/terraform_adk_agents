@@ -1,0 +1,38 @@
+# Environment files
+.env
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+ENV/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Output directories
+output/
+*.tfstate
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+
+# GCP credentials
+*.json
+!terraform-key.json.example
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
