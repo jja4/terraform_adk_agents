@@ -2,14 +2,16 @@
 Documentation Agent
 
 Creates comprehensive documentation for generated Terraform infrastructure.
-Generates architecture diagrams, README files, and deployment guides.
+Uses Pydantic models for structured output.
 """
 
 import json
 from typing import Dict, Any
+from pydantic import ValidationError as PydanticValidationError
 from google.adk.agents import LlmAgent
 from google.adk.models.google_llm import Gemini
 from google.genai import types
+from src.schemas import DocumentationOutput
 
 
 def create_documentation_agent(retry_config: types.HttpRetryOptions) -> LlmAgent:
@@ -33,224 +35,119 @@ def create_documentation_agent(retry_config: types.HttpRetryOptions) -> LlmAgent
             retry_options=retry_config
         ),
         description="Creates comprehensive documentation including diagrams, README, and deployment guides.",
-        instruction=r"""You are a technical writer specializing in cloud infrastructure documentation.
+        instruction=r"""You are a technical writer for cloud infrastructure documentation.
 
-Your task is to receive validated Terraform code and architecture information, then create comprehensive, professional documentation.
-
-**Input:** You will receive:
-1. Architecture specification JSON
-2. Generated and validated Terraform files
-3. Validation results
-
-**Your responsibilities:**
-1. Create a detailed README.md
-2. Generate architecture diagram (Mermaid format)
-3. Document all variables and their purposes
-4. Create deployment instructions
-5. Provide usage examples
-6. Include troubleshooting tips
-7. Document security considerations
-
-**Output JSON Structure:**
+CRITICAL: Output ONLY valid JSON matching this schema:
 {
-    "documentation": {
-        "readme": "Complete README.md content in Markdown",
-        "architecture_diagram": "Mermaid diagram code",
-        "deployment_guide": "Step-by-step deployment instructions",
-        "variables_reference": "Documentation of all variables",
-        "outputs_reference": "Documentation of all outputs",
-        "security_guide": "Security best practices and considerations",
-        "troubleshooting": "Common issues and solutions"
-    }
+  "readme": "string (REQUIRED - complete README.md markdown)"
 }
 
-**README.md Structure:**
-The README should include:
-1. Project title and description
-2. Architecture overview
-3. Architecture diagram (Mermaid)
-4. Module structure explanation
-5. Environment configuration explanation
-6. Prerequisites
-7. Quick start guide
-8. Detailed deployment instructions
-9. Configuration (variables)
-10. Outputs
-11. Security considerations
-12. Maintenance and operations
-13. Troubleshooting
-14. License/Credits
+The README must include ALL sections:
+- Title and overview
+- Architecture description
+- Prerequisites
+- Deployment steps (terraform init, plan, apply)
+- Configuration guide
+- Usage examples
+- Security notes
+- Troubleshooting tips
 
-**Architecture Diagram Guidelines:**
-- Use Mermaid diagram syntax
-- Show all major components
-- Include relationships and data flow
-- Use clear labels
-- Color code different service types
+Rules:
+- Output ONLY a JSON object with a "readme" field
+- Use proper markdown formatting in the readme string
+- Keep it comprehensive but under 2000 words
+- Properly escape quotes, newlines, and special characters in JSON
+- Wrap output in ```json code block
 
-**Example Mermaid Diagram:**
-```mermaid
-graph TB
-    subgraph "GCP Project"
-        CR[Cloud Run Service<br/>api-service]
-        SQL[(Cloud SQL<br/>PostgreSQL)]
-        GCS[Cloud Storage<br/>static-assets]
-        VPC[VPC Network]
-        
-        CR -->|Private IP| SQL
-        CR -->|Read/Write| GCS
-        SQL -.->|Private| VPC
-    end
-    
-    Internet([Internet]) -->|HTTPS| CR
-    
-    style CR fill:#4285f4
-    style SQL fill:#34a853
-    style GCS fill:#fbbc04
+Example output:
+```json
+{
+  "readme": "# Infrastructure Name\\n\\n## Overview\\n...\\n## Deployment\\n..."
+}
 ```
 
-**Documentation Best Practices:**
-1. **Clear and Concise**: Use simple language
-2. **Complete**: Cover all aspects of the infrastructure
-3. **Practical**: Include real examples and commands
-4. **Accessible**: Assume reader has basic cloud knowledge
-5. **Structured**: Use proper headings and formatting
-6. **Visual**: Include diagrams and code examples
-**Deployment Guide Format:**
-```markdown
-## Deployment Guide
-
-### Prerequisites
-- Terraform >= 1.5
-- gcloud CLI installed and configured
-- GCP Project with billing enabled
-- Required APIs enabled
-
-### Understanding the Structure
-
-This project uses a modular Terraform structure:
-
-**modules/** - Reusable infrastructure components
-- Each module is self-contained and environment-agnostic
-- Modules can be reused across different environments
-
-**environments/prod/** - Production environment configuration
-- Calls the modules with prod-specific values
-- Contains environment-specific settings
-
-### Step 1: Navigate to Environment
-\```bash
-cd environments/prod
-\```
-
-### Step 2: Configure Variables
-\```bash
-cp terraform.tfvars.example terraform.tfvars
-# Edit terraform.tfvars with your values
-\```
-
-### Step 3: Initialize Terraform
-\```bash
-terraform init
-\```
-
-### Step 4: Review Plan
-\```bash
-terraform plan
-\```
-
-### Step 5: Deploy
-\```bash
-terraform apply
-\```
-
-### Module Reusability
-
-To use these modules in a different environment (e.g., dev or staging):
-
-1. Create a new environment directory: `environments/dev/`
-2. Copy the files from `environments/prod/`
-3. Update the variables for the dev environment
-4. The modules in `modules/` can be reused as-is
-```raform apply
-\```
-```
-
-**Variables Reference Format:**
-For each variable, document:
-- Name
-- Type
-- Description
-- Default value (if any)
-- Required or optional
-- Example values
-- Validation rules
-
-**Security Guide Should Cover:**
-1. IAM roles and service accounts
-2. Network security (private IPs, firewall rules)
-3. Data encryption (at rest and in transit)
-4. Secret management
-5. Compliance considerations
-6. Recommended additional security measures
-
-**Troubleshooting Section:**
-Include common issues such as:
-- API not enabled errors
-- Permission denied errors
-- Resource quota limits
-- Network connectivity issues
-- State file management
-
-Create professional, comprehensive documentation that would be production-ready.
-""",
+Now generate the documentation.""",
         tools=[]  # Pure LLM reasoning for documentation
     )
     
     return agent
 
 
-def parse_documentation(agent_response: str) -> Dict[str, Any]:
+def parse_documentation(agent_response: str) -> DocumentationOutput:
     """
-    Parse the agent's response and extract the documentation.
+    Parse documentation from agent response using Pydantic validation.
     
     Args:
-        agent_response: The text response from the agent
+        agent_response: Raw response from documentation agent
         
     Returns:
-        Parsed documentation dictionary
+        Validated DocumentationOutput object
         
     Raises:
-        ValueError: If the response is not valid JSON
+        ValueError: If the response cannot be parsed or validated
     """
     response = agent_response.strip()
     
-    # Handle markdown code blocks
-    if response.startswith("```json"):
-        response = response[7:]
-    elif response.startswith("```"):
-        response = response[3:]
+    print(f"\n[DEBUG] Raw response length: {len(response)} chars")
+    print(f"[DEBUG] First 300 chars: {response[:300]}")
     
-    if response.endswith("```"):
-        response = response[:-3]
+    # Extract JSON from markdown code blocks - find the LAST closing backticks
+    # to avoid stopping at code blocks inside the JSON
+    if '```json' in response:
+        json_start = response.find('```json') + 7
+        # Find the last occurrence of ``` to get the closing delimiter
+        json_end = response.rfind('```')
+        if json_end > json_start:
+            response = response[json_start:json_end].strip()
+            print(f"[DEBUG] Extracted from ```json block: {len(response)} chars")
+    elif '```' in response:
+        json_start = response.find('```') + 3
+        # Find the last occurrence of ``` to get the closing delimiter
+        json_end = response.rfind('```')
+        if json_end > json_start:
+            potential_json = response[json_start:json_end].strip()
+            if potential_json.startswith('{') or potential_json.startswith('['):
+                response = potential_json
+                print(f"[DEBUG] Extracted from ``` block: {len(response)} chars")
     
     response = response.strip()
     
+    # Debug: Show first 200 chars and last 100 chars of what we're trying to parse
+    print(f"[DEBUG] Final JSON to parse - Length: {len(response)} chars")
+    print(f"[DEBUG] First 200 chars: {response[:200]}...")
+    print(f"[DEBUG] Last 100 chars: ...{response[-100:]}")
+    
     try:
-        return json.loads(response)
+        # Parse JSON - this will handle escaped strings correctly
+        data = json.loads(response)
+        # Validate with Pydantic
+        doc = DocumentationOutput(**data)
+        print(f"✅ Documentation parsed successfully ({len(doc.readme)} chars in README)")
+        return doc
     except json.JSONDecodeError as e:
-        raise ValueError(f"Failed to parse documentation JSON: {e}\nResponse: {response}")
+        # Fallback: create minimal documentation
+        print(f"❌ JSON parsing failed: {str(e)}")
+        print(f"   Attempted to parse: {response[:300]}...")
+        return DocumentationOutput(
+            readme=f"# Infrastructure Documentation\n\n*Error generating full documentation*\n\nParse error: {str(e)[:200]}\n\nPlease re-run the generator for complete documentation."
+        )
+    except PydanticValidationError as e:
+        # Schema validation failed
+        print(f"❌ Pydantic validation failed: {str(e)}")
+        return DocumentationOutput(
+            readme=f"# Infrastructure Documentation\n\n*Error validating documentation schema*\n\nValidation error: {str(e)[:200]}\n\nPlease re-run the generator for complete documentation."
+        )
 
 
 def save_documentation_to_files(
-    documentation: Dict[str, Any],
+    documentation: DocumentationOutput,
     output_dir: str
 ) -> Dict[str, str]:
     """
     Save documentation to actual files.
     
     Args:
-        documentation: Parsed documentation dictionary
+        documentation: Validated DocumentationOutput object
         output_dir: Directory to save files
         
     Returns:
@@ -262,41 +159,37 @@ def save_documentation_to_files(
     os.makedirs(output_dir, exist_ok=True)
     
     saved_files = {}
-    doc_data = documentation.get("documentation", {})
     
     # Save README
-    if "readme" in doc_data:
-        readme_path = os.path.join(output_dir, "README.md")
-        with open(readme_path, 'w') as f:
-            f.write(doc_data["readme"])
-        saved_files["readme"] = readme_path
+    readme_path = os.path.join(output_dir, "README.md")
+    with open(readme_path, 'w') as f:
+        f.write(documentation.readme)
+    saved_files["readme"] = readme_path
     
-    # Save deployment guide
-    if "deployment_guide" in doc_data:
+    # Save optional deployment guide if provided separately
+    if documentation.deployment_guide:
         deploy_path = os.path.join(output_dir, "DEPLOYMENT.md")
         with open(deploy_path, 'w') as f:
-            f.write(doc_data["deployment_guide"])
+            f.write(documentation.deployment_guide)
         saved_files["deployment_guide"] = deploy_path
     
-    # Save security guide
-    if "security_guide" in doc_data:
+    # Save optional files if they exist
+    if documentation.security_guide:
         security_path = os.path.join(output_dir, "SECURITY.md")
         with open(security_path, 'w') as f:
-            f.write(doc_data["security_guide"])
+            f.write(documentation.security_guide)
         saved_files["security_guide"] = security_path
     
-    # Save troubleshooting guide
-    if "troubleshooting" in doc_data:
+    if documentation.troubleshooting:
         troubleshoot_path = os.path.join(output_dir, "TROUBLESHOOTING.md")
         with open(troubleshoot_path, 'w') as f:
-            f.write(doc_data["troubleshooting"])
+            f.write(documentation.troubleshooting)
         saved_files["troubleshooting"] = troubleshoot_path
     
-    # Save architecture diagram
-    if "architecture_diagram" in doc_data:
+    if documentation.architecture_diagram:
         diagram_path = os.path.join(output_dir, "architecture.mmd")
         with open(diagram_path, 'w') as f:
-            f.write(doc_data["architecture_diagram"])
+            f.write(documentation.architecture_diagram)
         saved_files["diagram"] = diagram_path
     
     return saved_files

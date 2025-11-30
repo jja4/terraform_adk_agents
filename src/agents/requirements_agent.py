@@ -37,6 +37,8 @@ def create_requirements_agent(retry_config: types.HttpRetryOptions) -> LlmAgent:
 
 Your task is to parse natural language descriptions of applications and extract structured requirements.
 
+**CRITICAL: You MUST output ONLY valid JSON in the exact format specified below. Do NOT output explanations or plans. Output the final JSON result immediately.**
+
 Follow these steps:
 1. Read and understand the user's application description
 2. Identify all infrastructure components mentioned or implied
@@ -144,18 +146,23 @@ def parse_requirements(agent_response: str) -> Dict[str, Any]:
     # Try to extract JSON from the response
     response = agent_response.strip()
     
-    # Handle cases where the response might include markdown code blocks
-    if response.startswith("```json"):
-        response = response[7:]
-    elif response.startswith("```"):
-        response = response[3:]
-    
-    if response.endswith("```"):
-        response = response[:-3]
+    # Extract JSON from markdown code blocks anywhere in the response
+    if '```json' in response:
+        json_start = response.find('```json') + 7
+        json_end = response.find('```', json_start)
+        if json_end > json_start:
+            response = response[json_start:json_end].strip()
+    elif '```' in response:
+        json_start = response.find('```') + 3
+        json_end = response.find('```', json_start)
+        if json_end > json_start:
+            potential_json = response[json_start:json_end].strip()
+            if potential_json.startswith('{') or potential_json.startswith('['):
+                response = potential_json
     
     response = response.strip()
     
     try:
         return json.loads(response)
     except json.JSONDecodeError as e:
-        raise ValueError(f"Failed to parse requirements JSON: {e}\nResponse: {response}")
+        raise ValueError(f"Failed to parse requirements JSON: {e}\nResponse: {response[:500]}...")

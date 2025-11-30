@@ -42,6 +42,8 @@ def create_architecture_agent(retry_config: types.HttpRetryOptions) -> LlmAgent:
 
 Your task is to receive infrastructure requirements and design a comprehensive architecture with Terraform module structure.
 
+**CRITICAL: You MUST output ONLY valid JSON in the exact format specified below. Do NOT output explanations or plans. After using any tools, output the final JSON result immediately.**
+
 **Input:** You will receive a JSON requirements specification.
 
 **Your responsibilities:**
@@ -100,13 +102,10 @@ Your task is to receive infrastructure requirements and design a comprehensive a
 - Include monitoring and logging where appropriate
 - Use regional resources for high availability
 
-Always output valid JSON. Validate all services before including them in the architecture.
-""",
-        tools=[
-            check_gcp_service_availability,
-            list_available_regions,
-            validate_service_compatibility
-        ]
+Always output valid JSON immediately. Assume all GCP services are available.
+
+**CRITICAL: Just analyze requirements and output JSON. Do not use any tools.**
+"""
     )
     
     return agent
@@ -127,18 +126,23 @@ def parse_architecture(agent_response: str) -> Dict[str, Any]:
     """
     response = agent_response.strip()
     
-    # Handle markdown code blocks
-    if response.startswith("```json"):
-        response = response[7:]
-    elif response.startswith("```"):
-        response = response[3:]
-    
-    if response.endswith("```"):
-        response = response[:-3]
+    # Extract JSON from markdown code blocks anywhere in the response
+    if '```json' in response:
+        json_start = response.find('```json') + 7
+        json_end = response.find('```', json_start)
+        if json_end > json_start:
+            response = response[json_start:json_end].strip()
+    elif '```' in response:
+        json_start = response.find('```') + 3
+        json_end = response.find('```', json_start)
+        if json_end > json_start:
+            potential_json = response[json_start:json_end].strip()
+            if potential_json.startswith('{') or potential_json.startswith('['):
+                response = potential_json
     
     response = response.strip()
     
     try:
         return json.loads(response)
     except json.JSONDecodeError as e:
-        raise ValueError(f"Failed to parse architecture JSON: {e}\nResponse: {response}")
+        raise ValueError(f"Failed to parse architecture JSON: {e}\nResponse: {response[:500]}...")

@@ -1,0 +1,9 @@
+# direnv configuration example
+# Copy this file to .envrc and customize for your environment
+# Then run: direnv allow
+
+# Load environment variables from .env file
+dotenv .env
+
+# Optional: Add any additional environment setup here
+# export PATH=$PWD/bin:$PATH

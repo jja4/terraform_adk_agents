@@ -92,11 +92,19 @@ def display_scenarios():
     print("\n📋 Available Scenarios:")
     print("-" * 80)
     for key, scenario in EXAMPLE_SCENARIOS.items():
-        print(f"{key}. {scenario['name']}")
         if scenario['description']:
-            # Show first line of description
-            first_line = scenario['description'].strip().split('\n')[0]
-            print(f"   {first_line}")
+            # Clean up description and show all bullet points
+            description = scenario['description'].strip()
+            lines = description.split('\n')
+            print(f"{key}. {scenario['name']}")
+            for line in lines:
+                line = line.strip()
+                if line:
+                    print(f"   {line}")
+        else:
+            # For custom option with no description
+            print(f"{key}. {scenario['name']}")
+        print()  # Add blank line between scenarios
     print("-" * 80)
 
 
@@ -159,7 +167,7 @@ async def run_demo():
     # Create output directory with timestamp
     from datetime import datetime
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_dir = f"./output/demo_{timestamp}"
+    output_dir = f"./output/output_{timestamp}"
     
     print(f"\n📁 Output directory: {output_dir}")
     print("\n🚀 Starting generation process...\n")
@@ -168,7 +176,7 @@ async def run_demo():
     try:
         orchestrator = TerraformGeneratorOrchestrator(
             output_dir=output_dir,
-            max_validation_iterations=3
+            max_validation_iterations=20
         )
         results = await orchestrator.run(user_description)
         
@@ -193,18 +201,34 @@ async def run_demo():
         # Terraform summary
         tf = results['terraform_code']
         print(f"\n✅ Terraform Code:")
-        print(f"   Files generated: {len(tf.get('files', []))}")
+        # Count modules and environment files
+        module_count = len(tf.get('modules', []))
+        env_count = len(tf.get('environments', {}))
+        # Count total .tf files
+        total_files = 0
+        for module in tf.get('modules', []):
+            total_files += len(module.get('files', []))
+        for env_config in tf.get('environments', {}).values():
+            # Count each environment config file (main, variables, outputs, provider)
+            total_files += sum(1 for key in ['main_tf', 'variables_tf', 'outputs_tf', 'provider_tf', 'terraform_tfvars_example'] if key in env_config)
+        print(f"   Modules: {module_count}")
+        print(f"   Environments: {env_count}")
+        print(f"   Total .tf files: {total_files}")
         
         # Validation summary
         val = results['validation_results']
         print(f"\n✅ Validation:")
-        print(f"   Status: {val.get('validation_status', 'N/A')}")
-        print(f"   Security Score: {val.get('security_score', 'N/A')}/100")
-        print(f"   Best Practices Score: {val.get('best_practices_score', 'N/A')}/100")
+        print(f"   Status: {val.validation_status}")
+        print(f"   Errors: {val.error_count}")
+        if val.error_count > 0:
+            print(f"   Summary: {val.summary}")
         
         # Documentation summary
         print(f"\n✅ Documentation:")
-        print(f"   README, deployment guide, security guide, and more generated")
+        print(f"   README.md generated")
+        if val.error_count > 0:
+            print(f"\n⚠️  Warning: Validation found {val.error_count} errors")
+            print(f"   Please review the generated code before deploying")
         
         print("\n" + "=" * 80)
         print(f"🎉 Success! All files saved to: {output_dir}")

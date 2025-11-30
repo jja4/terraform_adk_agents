@@ -38,6 +38,8 @@ def create_generator_agent(retry_config: types.HttpRetryOptions) -> LlmAgent:
 
 Your task is to receive an architecture specification and generate complete, production-ready Terraform code.
 
+**CRITICAL: You MUST output ONLY valid JSON in the exact format specified below. Do NOT output explanations, plans, or Terraform code directly. All Terraform code must be inside JSON strings.**
+
 **Input:** You will receive a JSON architecture specification with modules and resources.
 
 **Your responsibilities:**
@@ -48,7 +50,7 @@ Your task is to receive an architecture specification and generate complete, pro
 5. Use Terraform best practices
 6. Format code using the terraform_fmt tool
 7. Validate basic syntax using check_terraform_syntax
-8. Output structured JSON with all generated files
+8. Output structured JSON with all generated files (REQUIRED)
 
 **Use the available tools:**
 - `terraform_fmt(code)`: Format Terraform code according to standard conventions
@@ -106,7 +108,7 @@ Your task is to receive an architecture specification and generate complete, pro
         }
     ],
     "environments": {
-        "prod": {
+        "<environment_name>": {
             "main_tf": "Main configuration calling modules",
             "variables_tf": "Environment-specific variables",
             "outputs_tf": "Environment outputs",
@@ -161,7 +163,7 @@ output "service_url" {
 
 Environment Structure (Environment-specific):
 ```hcl
-# environments/prod/provider.tf
+# environments/<environment_name>/provider.tf
 terraform {
   required_version = ">= 1.5"
   
@@ -175,15 +177,16 @@ terraform {
 
 provider "google" {
 **Important Guidelines:**
-1. Generate COMPLETE, WORKING Terraform code
-2. Create REUSABLE modules in modules/ directory
-3. Each module should be self-contained with main.tf, variables.tf, outputs.tf
-4. Environment configuration in environments/prod/ calls the modules
-5. Include ALL necessary resources (networking, IAM, etc.)
-6. Use realistic default values
-7. Format all code with terraform_fmt before outputting
-8. Validate syntax with check_terraform_syntax
-9. Output valid JSON
+1. **CRITICAL: Use the 'environment' value from the architecture/requirements (e.g., 'dev', 'staging', 'prod') as the key in the environments object**
+2. Generate COMPLETE, WORKING Terraform code
+3. Create REUSABLE modules in modules/ directory
+4. Each module should be self-contained with main.tf, variables.tf, outputs.tf
+5. Environment configuration in environments/<environment_name>/ calls the modules
+6. Include ALL necessary resources (networking, IAM, etc.)
+7. Use realistic default values
+8. Format all code with terraform_fmt before outputting
+9. Validate syntax with check_terraform_syntax
+10. Output valid JSON
 
 **Module Design Principles:**
 - Each module = one logical component (vpc, cloud_run, cloud_sql, etc.)
@@ -204,7 +207,7 @@ module "cloud_run" {
   service_account_email = module.iam.service_account_email
 }
 
-# environments/prod/variables.tf
+# environments/<environment_name>/variables.tf
 variable "project_id" {
   description = "GCP Project ID"
   type        = string
@@ -216,7 +219,7 @@ variable "region" {
   default     = "us-central1"
 }
 
-# environments/prod/outputs.tf
+# environments/<environment_name>/outputs.tf
 output "service_url" {
   description = "Cloud Run service URL"
   value       = module.cloud_run.service_url
@@ -227,16 +230,10 @@ output "service_url" {
 1. Generate COMPLETE, WORKING Terraform code
 2. Include ALL necessary resources (networking, IAM, etc.)
 3. Use realistic default values
-4. Format all code with terraform_fmt before outputting
-5. Validate syntax with check_terraform_syntax
-6. Output valid JSON
+4. Output valid JSON immediately - NO tool usage, NO explanations
 
-Always format code properly and validate before returning results.
+**CRITICAL: Just output the JSON structure. Do not use any tools.**
 """,
-        tools=[
-            terraform_fmt,
-            check_terraform_syntax
-        ]
     )
     
     return agent
@@ -257,18 +254,25 @@ def parse_generated_terraform(agent_response: str) -> Dict[str, Any]:
     """
     response = agent_response.strip()
     
-    # Handle markdown code blocks
-    if response.startswith("```json"):
-        response = response[7:]
-    elif response.startswith("```"):
-        response = response[3:]
-    
-    if response.endswith("```"):
-        response = response[:-3]
+    # Extract JSON from markdown code blocks anywhere in the response
+    if '```json' in response:
+        json_start = response.find('```json') + 7
+        json_end = response.find('```', json_start)
+        if json_end > json_start:
+            response = response[json_start:json_end].strip()
+    elif '```' in response:
+        # Try generic code block
+        json_start = response.find('```') + 3
+        json_end = response.find('```', json_start)
+        if json_end > json_start:
+            potential_json = response[json_start:json_end].strip()
+            # Check if it looks like JSON
+            if potential_json.startswith('{') or potential_json.startswith('['):
+                response = potential_json
     
     response = response.strip()
     
     try:
         return json.loads(response)
     except json.JSONDecodeError as e:
-        raise ValueError(f"Failed to parse generated Terraform JSON: {e}\nResponse: {response}")
+        raise ValueError(f"Failed to parse generated Terraform JSON: {e}\nResponse: {response[:500]}...")

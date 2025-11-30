@@ -16,7 +16,7 @@ from google.adk.runners import InMemoryRunner
 # Load environment variables from .env file
 load_dotenv()
 
-# Import agent creators
+# Import agent creators and Pydantic models
 from src.agents.requirements_agent import create_requirements_agent, parse_requirements
 from src.agents.architecture_agent import create_architecture_agent, parse_architecture
 from src.agents.generator_agent import create_generator_agent, parse_generated_terraform
@@ -31,6 +31,7 @@ from src.agents.documentation_agent import (
     parse_documentation,
     save_documentation_to_files
 )
+from src.schemas import ValidatorOutput, DocumentationOutput
 
 
 class TerraformGeneratorOrchestrator:
@@ -41,13 +42,13 @@ class TerraformGeneratorOrchestrator:
     User → Requirements → Architecture → Generator → Validator → (loop) → Documentation
     """
     
-    def __init__(self, output_dir: str = "./output", max_validation_iterations: int = 3):
+    def __init__(self, output_dir: str = "./output", max_validation_iterations: int = 20):
         """
         Initialize the orchestrator.
         
         Args:
             output_dir: Directory to save generated files
-            max_validation_iterations: Maximum number of validation/regeneration cycles
+            max_validation_iterations: Maximum number of validation/regeneration cycles (default: 20)
         """
         self.output_dir = output_dir
         self.max_validation_iterations = max_validation_iterations
@@ -94,7 +95,6 @@ class TerraformGeneratorOrchestrator:
         requirements = await self._extract_requirements(user_input)
         print(f"✅ Requirements extracted: {requirements.get('application_name', 'N/A')}")
         print(f"   Components: {len(requirements.get('components', []))}")
-        self._save_json(requirements, "requirements.json")
         
         # Step 2: Architecture Design
         print("\n" + "-" * 80)
@@ -103,7 +103,6 @@ class TerraformGeneratorOrchestrator:
         architecture = await self._design_architecture(requirements)
         print(f"✅ Architecture designed: {architecture.get('architecture_name', 'N/A')}")
         print(f"   Modules: {len(architecture.get('modules', []))}")
-        self._save_json(architecture, "architecture.json")
         
         # Step 3: Terraform Generation
         print("\n" + "-" * 80)
@@ -121,14 +120,16 @@ class TerraformGeneratorOrchestrator:
             terraform_code, architecture
         )
         
-        if validation_results.get("validation_status") == "passed":
+        if validation_results.validation_status == "passed":
             print("✅ Validation PASSED")
-        elif validation_results.get("validation_status") == "warning":
-            print("⚠️  Validation passed with WARNINGS")
         else:
-            print("❌ Validation FAILED (proceeding with documentation anyway)")
+            print(f"❌ Validation FAILED: {validation_results.error_count} errors")
+            print("\nErrors:")
+            for error in validation_results.errors[:3]:  # Show first 3
+                print(f"  - {error.file}: {error.message}")
+            print("\n⚠️  Proceeding with documentation generation despite errors...")
         
-        # Step 5: Documentation
+        # Step 5: Documentation (even if validation failed - document what we have)
         print("\n" + "-" * 80)
         print("STEP 5: Documentation Generation")
         print("-" * 80)
@@ -164,7 +165,6 @@ class TerraformGeneratorOrchestrator:
                 print(f"   - environments/{env_name}/")
         
         print(f"\n📄 Documentation: {len(saved_docs)} files")
-        print(f"📋 Metadata: 2 files (requirements.json, architecture.json)")
         print("=" * 80)
         
         # Final summary
@@ -172,9 +172,9 @@ class TerraformGeneratorOrchestrator:
         print("🎉 GENERATION COMPLETE")
         print("=" * 80)
         print(f"📁 Output directory: {self.output_dir}")
-        print(f"   - Terraform files: {len(validated_code.get('files', []))}")
+        print(f"   - Terraform modules: {module_count}")
+        print(f"   - Terraform environments: {env_count}")
         print(f"   - Documentation files: {len(saved_docs)}")
-        print(f"   - Metadata files: 2 (requirements.json, architecture.json)")
         print("=" * 80)
         
         return {
@@ -188,7 +188,7 @@ class TerraformGeneratorOrchestrator:
     
     async def _extract_requirements(self, user_input: str) -> Dict[str, Any]:
         """Extract requirements from user input."""
-        runner = InMemoryRunner(agent=self.requirements_agent)
+        runner = InMemoryRunner(agent=self.requirements_agent, app_name="terraform_generator")
         response = await runner.run_debug(user_input)
         
         # Extract text from response
@@ -201,10 +201,9 @@ class TerraformGeneratorOrchestrator:
 
 {json.dumps(requirements, indent=2)}
 
-Use the available tools to validate service availability and compatibility.
 Output the complete architecture specification in JSON format."""
         
-        runner = InMemoryRunner(agent=self.architecture_agent)
+        runner = InMemoryRunner(agent=self.architecture_agent, app_name="terraform_generator")
         response = await runner.run_debug(prompt)
         
         response_text = self._extract_response_text(response)
@@ -216,10 +215,9 @@ Output the complete architecture specification in JSON format."""
 
 {json.dumps(architecture, indent=2)}
 
-Use terraform_fmt to format the code and check_terraform_syntax to validate.
-Output all Terraform files in JSON format."""
+Output all Terraform files in JSON format with proper structure."""
         
-        runner = InMemoryRunner(agent=self.generator_agent)
+        runner = InMemoryRunner(agent=self.generator_agent, app_name="terraform_generator")
         response = await runner.run_debug(prompt)
         
         response_text = self._extract_response_text(response)
@@ -239,25 +237,33 @@ Output all Terraform files in JSON format."""
         current_code = terraform_code
         iteration = 0
         
+        print(f"\n{'='*80}")
+        print(f"🔍 VALIDATION LOOP (max {self.max_validation_iterations} iterations)")
+        print(f"{'='*80}")
+        
         while iteration < self.max_validation_iterations:
             iteration += 1
-            print(f"\n🔍 Validation iteration {iteration}/{self.max_validation_iterations}")
+            print(f"\n🔄 Iteration {iteration}/{self.max_validation_iterations}")
             
             # Validate current code
             validation_results = await self._validate_terraform(current_code)
             
             # Check if we should regenerate
             if not should_regenerate(validation_results):
-                print(f"✅ Validation successful on iteration {iteration}")
+                print(f"\n✅ Validation PASSED on iteration {iteration}!")
+                print(f"{'='*80}")
                 return current_code, validation_results
             
             # If this was the last iteration, return anyway
             if iteration >= self.max_validation_iterations:
-                print(f"⚠️  Max iterations reached. Returning current code.")
+                print(f"\n⚠️  Max iterations ({self.max_validation_iterations}) reached. Stopping validation loop.")
+                print(f"   Errors remaining: {len(validation_results.errors)}")
+                print(f"{'='*80}")
                 return current_code, validation_results
             
             # Generate feedback and regenerate
-            print(f"❌ Validation failed. Generating feedback for regeneration...")
+            print(f"❌ Validation failed with {len(validation_results.errors)} errors.")
+            print(f"   Preparing to regenerate code with feedback...")
             feedback = get_feedback_for_regeneration(validation_results)
             
             regenerate_prompt = f"""The previous Terraform code had validation errors. Please fix them.
@@ -268,14 +274,13 @@ ORIGINAL ARCHITECTURE:
 PREVIOUS CODE:
 {json.dumps(current_code, indent=2)}
 
-VALIDATION FEEDBACK:
+VALIDATION FEEDBACK {iteration}/{self.max_validation_iterations}:
 {feedback}
 
 Generate corrected Terraform code that addresses all the issues above.
-Use terraform_fmt and check_terraform_syntax to validate the new code.
 Output the corrected code in JSON format."""
             
-            runner = InMemoryRunner(agent=self.generator_agent)
+            runner = InMemoryRunner(agent=self.generator_agent, app_name="terraform_generator")
             response = await runner.run_debug(regenerate_prompt)
             response_text = self._extract_response_text(response)
             current_code = parse_generated_terraform(response_text)
@@ -289,14 +294,9 @@ Output the corrected code in JSON format."""
 
 {json.dumps(terraform_code, indent=2)}
 
-Use all available validation tools:
-- check_terraform_syntax for syntax validation
-- terraform_validate for configuration validation
-- terraform_plan for deployment simulation
-
-Provide detailed feedback in JSON format."""
+Provide detailed feedback in JSON format matching the ValidatorOutput schema."""
         
-        runner = InMemoryRunner(agent=self.validator_agent)
+        runner = InMemoryRunner(agent=self.validator_agent, app_name="terraform_generator")
         response = await runner.run_debug(prompt)
         
         response_text = self._extract_response_text(response)
@@ -306,27 +306,47 @@ Provide detailed feedback in JSON format."""
         self,
         architecture: Dict[str, Any],
         terraform_code: Dict[str, Any],
-        validation_results: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        validation_results: ValidatorOutput
+    ) -> DocumentationOutput:
         """Generate documentation."""
-        prompt = f"""Generate comprehensive documentation for this Terraform infrastructure:
-
-ARCHITECTURE:
-{json.dumps(architecture, indent=2)}
-
-TERRAFORM CODE:
-{json.dumps(terraform_code, indent=2)}
-
-VALIDATION RESULTS:
-{json.dumps(validation_results, indent=2)}
-
-Create complete documentation including README, deployment guide, architecture diagrams, and troubleshooting.
-Output in JSON format."""
+        # Convert Pydantic model to dict for JSON serialization
+        validation_dict = validation_results.model_dump()
         
-        runner = InMemoryRunner(agent=self.documentation_agent)
+        # Create concise summary for documentation
+        arch_summary = {
+            "name": architecture.get("architecture_name", "Infrastructure"),
+            "modules": [m.get("module_name") for m in architecture.get("modules", [])],
+            "environment": architecture.get("environment", "production")
+        }
+        
+        prompt = f"""Generate a comprehensive README.md for this Terraform infrastructure.
+
+Architecture: {arch_summary['name']}
+Modules: {', '.join(arch_summary['modules'])}
+Environment: {arch_summary['environment']}
+Validation Status: {validation_dict.get('validation_status', 'unknown')}
+
+Include sections for: Overview, Architecture, Prerequisites, Deployment Steps, Configuration, Security, and Troubleshooting.
+
+Output JSON with only a 'readme' field containing the complete markdown content."""
+        
+        runner = InMemoryRunner(agent=self.documentation_agent, app_name="terraform_generator")
         response = await runner.run_debug(prompt)
         
-        response_text = self._extract_response_text(response)
+        # Don't extract here - let parse_documentation handle it
+        # to avoid double extraction that corrupts the JSON
+        if isinstance(response, list):
+            text_parts = []
+            for event in response:
+                if hasattr(event, 'content') and event.content:
+                    if hasattr(event.content, 'parts') and event.content.parts:
+                        for part in event.content.parts:
+                            if hasattr(part, 'text') and part.text:
+                                text_parts.append(part.text)
+            response_text = '\n'.join(text_parts) if text_parts else str(response)
+        else:
+            response_text = str(response)
+        
         return parse_documentation(response_text)
     
     def _extract_response_text(self, response) -> str:
@@ -364,6 +384,26 @@ Output in JSON format."""
                         # Check if it looks like JSON
                         if potential_json.startswith('{') or potential_json.startswith('['):
                             return potential_json
+                
+                # Try to find JSON object anywhere in the text
+                json_start_idx = combined.find('{')
+                if json_start_idx >= 0:
+                    # Find the matching closing brace
+                    brace_count = 0
+                    for i in range(json_start_idx, len(combined)):
+                        if combined[i] == '{':
+                            brace_count += 1
+                        elif combined[i] == '}':
+                            brace_count -= 1
+                            if brace_count == 0:
+                                potential_json = combined[json_start_idx:i+1]
+                                # Quick validation - try to parse it
+                                try:
+                                    json.loads(potential_json)
+                                    return potential_json
+                                except:
+                                    pass
+                                break
                 
                 return combined
             
