@@ -15,9 +15,16 @@ load_dotenv()
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    format='%(message)s',  # Simplified format - just the message
     datefmt='%Y-%m-%d %H:%M:%S'
 )
+
+# Suppress verbose library logging
+logging.getLogger('google_adk').setLevel(logging.ERROR)
+logging.getLogger('google_genai').setLevel(logging.ERROR)
+logging.getLogger('httpx').setLevel(logging.WARNING)
+logging.getLogger('google.adk').setLevel(logging.ERROR)
+logging.getLogger('google.genai').setLevel(logging.ERROR)
 
 logger = logging.getLogger(__name__)
 

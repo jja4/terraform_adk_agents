@@ -369,6 +369,11 @@ Output all Terraform files in JSON format with proper structure."""
             
             # Generate feedback and regenerate
             logger.error(f"❌ Validation failed with {len(validation_results.errors)} errors.")
+            logger.error(f"   Errors found:")
+            for i, error in enumerate(validation_results.errors[:10], 1):  # Show up to 10 errors
+                logger.error(f"     {i}. [{error.severity.upper()}] {error.file}: {error.message}")
+            if len(validation_results.errors) > 10:
+                logger.error(f"     ... and {len(validation_results.errors) - 10} more errors")
             logger.info(f"   Preparing to regenerate code with feedback...")
             feedback = get_feedback_for_regeneration(validation_results)
             
