@@ -1,7 +1,42 @@
 """
-Demo Script
+Interactive Demo Script
+========================
 
-Interactive demonstration of the Terraform Generator Multi-Agent System.
+This script provides an interactive demonstration of the TerraformAI
+multi-agent system. It showcases the complete pipeline from natural
+language input to generated Terraform code.
+
+Features Demonstrated:
+----------------------
+1. Multi-agent orchestration with 5 specialized agents
+2. Validation loop with iterative improvement
+3. Session-based memory for learning from mistakes
+4. Comprehensive logging and observability
+5. Modular Terraform output structure
+
+Usage:
+------
+    $ uv run src/demo.py
+    
+    The demo will:
+    1. Display available infrastructure scenarios
+    2. Allow selection or custom input
+    3. Run the complete agent pipeline
+    4. Save generated Terraform to output/
+
+Pre-built Scenarios:
+--------------------
+1. Simple Web App - Cloud Run + Cloud SQL + Storage
+2. Microservices - GKE + Redis + Pub/Sub + Load Balancer
+3. Data Pipeline - Cloud Functions + BigQuery + Scheduler
+4. ML Platform - Vertex AI + GPU Instances + Cloud SQL
+5. Custom - Enter your own description
+
+Requirements:
+-------------
+- GOOGLE_API_KEY environment variable set
+- Python 3.10+
+- Dependencies installed via `uv sync`
 """
 
 import os
@@ -10,16 +45,19 @@ import logging
 from dotenv import load_dotenv
 
 # Load environment variables from .env file BEFORE importing anything else
+# This ensures GOOGLE_API_KEY is available when agents are created
 load_dotenv()
 
-# Configure logging
+# Configure logging for clean demo output
+# Using simplified format (just the message) for readability
 logging.basicConfig(
     level=logging.INFO,
     format='%(message)s',  # Simplified format - just the message
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
-# Suppress verbose library logging
+# Suppress verbose library logging to keep demo output clean
+# These libraries produce debug messages that clutter the demo
 logging.getLogger('google_adk').setLevel(logging.ERROR)
 logging.getLogger('google_genai').setLevel(logging.ERROR)
 logging.getLogger('httpx').setLevel(logging.WARNING)

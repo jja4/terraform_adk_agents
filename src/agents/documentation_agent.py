@@ -1,8 +1,41 @@
 """
-Documentation Agent
+Documentation Agent Module
+===========================
 
-Creates comprehensive documentation for generated Terraform infrastructure.
-Uses Pydantic models for structured output.
+This agent is the fifth and final in the sequential pipeline. It receives
+validated Terraform code and generates comprehensive documentation.
+
+ADK Features Demonstrated:
+--------------------------
+1. LlmAgent - Agent powered by an LLM (Gemini 2.5 Flash Lite)
+2. Sequential agent pattern - receives output from Validator
+3. Structured output with DocumentationOutput Pydantic model
+
+Agent Role in Pipeline:
+-----------------------
+    Validated Terraform -> [Documentation Agent] -> README.md + Guides
+    
+The Documentation Agent acts as a technical writer, producing:
+- README.md with architecture overview
+- Deployment instructions
+- Configuration guide
+- Variable documentation
+
+Output Structure:
+-----------------
+DocumentationOutput:
+- readme: Complete README.md content (required)
+- deployment_guide: Optional separate deployment doc
+- architecture_diagram: Optional Mermaid diagram
+- security_guide: Optional security best practices
+- troubleshooting: Optional troubleshooting guide
+
+Design Decisions:
+-----------------
+- Outputs raw markdown (no JSON wrapping)
+- Keeps README concise (< 500 words)
+- Includes essential sections: Overview, Architecture, Prerequisites, Deployment
+- Uses pure LLM reasoning (no external tools)
 """
 
 import json
@@ -20,16 +53,42 @@ logger = logging.getLogger(__name__)
 
 def create_documentation_agent(retry_config: types.HttpRetryOptions) -> LlmAgent:
     """
-    Create the Documentation Agent.
+    Create and configure the Documentation Agent.
     
-    This agent specializes in creating comprehensive documentation
-    for Terraform infrastructure projects.
+    This function creates an LlmAgent specialized in generating comprehensive
+    documentation for Terraform infrastructure projects.
+    
+    ADK Features Used:
+    ------------------
+    - LlmAgent: Core ADK agent class for documentation generation
+    - Gemini model: Uses Gemini 2.5 Flash Lite for fast generation
+    - Pure reasoning: No tools needed (tools=[])
+    
+    Documentation Responsibilities:
+    -------------------------------
+    1. Generate README.md with architecture overview
+    2. Create deployment instructions (terraform init, plan, apply)
+    3. Document prerequisites (Terraform, GCP CLI, permissions)
+    4. List key configuration variables
+    5. Provide brief troubleshooting guidance
+    
+    Output Format:
+    --------------
+    The agent outputs raw markdown content (no JSON wrapping).
+    This simplifies parsing and allows direct file writing.
+    
+    Content Guidelines:
+    -------------------
+    - README under 500 words for readability
+    - Essential sections: Overview, Architecture, Prerequisites, Deployment
+    - Practical focus: what users need to deploy
+    - Clear variable documentation
     
     Args:
-        retry_config: HTTP retry configuration for the LLM
+        retry_config: HttpRetryOptions for API retry configuration
         
     Returns:
-        Configured LlmAgent for documentation generation
+        Configured LlmAgent instance for documentation generation
     """
     
     agent = LlmAgent(
@@ -67,11 +126,24 @@ def parse_documentation(agent_response: str) -> DocumentationOutput:
     """
     Parse documentation from agent response.
     
+    This function handles the extraction of markdown content from the
+    agent's response, which should be raw markdown (not JSON).
+    
+    Parsing Strategy:
+    -----------------
+    1. Strip whitespace and code block markers
+    2. Extract content from ```markdown blocks if present
+    3. Validate content starts with # (markdown header)
+    4. Add default header if missing
+    
+    Unlike other agents that output JSON, the Documentation Agent
+    outputs raw markdown for easier file writing.
+    
     Args:
         agent_response: Raw markdown response from documentation agent
         
     Returns:
-        Validated DocumentationOutput object
+        DocumentationOutput with readme field containing markdown
     """
     response = agent_response.strip()
     
@@ -112,14 +184,26 @@ def save_documentation_to_files(
     output_dir: str
 ) -> Dict[str, str]:
     """
-    Save documentation to actual files.
+    Save documentation to actual files in the output directory.
+    
+    This function writes the generated documentation to disk, creating
+    the output directory if needed and saving each documentation file.
+    
+    File Mapping:
+    -------------
+    - readme -> README.md (always saved)
+    - deployment_guide -> DEPLOYMENT.md (optional)
+    - security_guide -> SECURITY.md (optional)
+    - troubleshooting -> TROUBLESHOOTING.md (optional)
+    - architecture_diagram -> architecture.mmd (optional, Mermaid format)
     
     Args:
-        documentation: Validated DocumentationOutput object
-        output_dir: Directory to save files
+        documentation: DocumentationOutput with generated content
+        output_dir: Directory path to save files
         
     Returns:
-        Dictionary mapping file types to file paths
+        Dictionary mapping file types to their saved file paths
+        Example: {"readme": "/output/README.md", ...}
     """
     import os
     

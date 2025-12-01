@@ -1,8 +1,51 @@
 """
-Terraform Generator Agent
+Terraform Generator Agent Module
+=================================
 
-Generates Terraform code based on architecture specifications.
-Uses terraform fmt for code formatting.
+This agent is the third in the sequential pipeline. It receives architecture
+specifications and generates complete, production-ready Terraform code.
+
+ADK Features Demonstrated:
+--------------------------
+1. LlmAgent - Agent powered by an LLM (Gemini 2.5 Flash Lite)
+2. Loop Agent Pattern - Participates in validation loop with Validator
+3. Session Memory - Shares session with Validator for iterative improvement
+4. Structured JSON output containing complete Terraform codebase
+
+Agent Role in Pipeline:
+-----------------------
+    Architecture Spec -> [Generator Agent] <-> [Validator Agent] -> Validated Code
+                              |________________feedback loop________________|
+
+The Generator Agent acts as a senior Terraform developer, producing:
+- Reusable modules in modules/ directory
+- Environment-specific configurations in environments/ directory
+- Provider configuration with version constraints
+- Variable definitions with descriptions
+- Output definitions for module interconnection
+
+Session Memory Feature (Key Innovation):
+----------------------------------------
+The Generator and Validator share session_id="validation_loop", enabling:
+- Generator remembers its previous code attempts
+- Generator sees previous validation errors
+- Each iteration builds on learned knowledge
+- Avoids repeating the same mistakes
+
+Output Structure:
+-----------------
+{
+    "terraform_version": "1.5",
+    "modules": [
+        {
+            "module_name": "vpc",
+            "files": [{"filename": "main.tf", "content": "..."}]
+        }
+    ],
+    "environments": {
+        "prod": {"main_tf": "...", "variables_tf": "..."}
+    }
+}
 """
 
 import json
@@ -18,16 +61,55 @@ logger = logging.getLogger(__name__)
 
 def create_generator_agent(retry_config: types.HttpRetryOptions) -> LlmAgent:
     """
-    Create the Terraform Generator Agent.
+    Create and configure the Terraform Generator Agent.
     
-    This agent specializes in generating idiomatic Terraform code
-    from architecture specifications.
+    This function creates an LlmAgent that generates production-ready
+    Terraform code from architecture specifications.
+    
+    ADK Features Used:
+    ------------------
+    - LlmAgent: Core ADK agent class for code generation
+    - Gemini model: Uses Gemini 2.5 Flash Lite for fast generation
+    - Loop pattern: Works with Validator in feedback loop
+    - Session memory: Shares session with Validator (critical feature)
+    
+    Session Memory (Key Innovation):
+    --------------------------------
+    This agent participates in the validation loop with shared session:
+    
+        generator_runner.run_async(session_id=\"validation_loop\")
+        validator_runner.run_async(session_id=\"validation_loop\")
+    
+    Benefits:
+    - Remembers previous code attempts in conversation history
+    - Sees previous validation errors and feedback
+    - Learns from mistakes across iterations
+    - Produces increasingly correct code
+    
+    Without session sharing, the Generator would have no memory of
+    what it tried before, leading to repeated mistakes.
+    
+    Code Generation Responsibilities:
+    ---------------------------------
+    1. Generate complete Terraform modules (main.tf, variables.tf, outputs.tf)
+    2. Create provider configurations with version constraints
+    3. Define variables with descriptions and defaults
+    4. Include proper resource dependencies
+    5. Follow Terraform naming conventions (snake_case)
+    6. Apply proper indentation and formatting
+    
+    Output Structure:
+    -----------------
+    - modules/: Reusable infrastructure components
+    - environments/: Environment-specific configurations (dev/prod)
+    - Each module: main.tf, variables.tf, outputs.tf
+    - Each environment: main.tf, provider.tf, variables.tf, outputs.tf
     
     Args:
-        retry_config: HTTP retry configuration for the LLM
+        retry_config: HttpRetryOptions for API retry configuration
         
     Returns:
-        Configured LlmAgent for Terraform code generation
+        Configured LlmAgent instance for Terraform generation
     """
     
     agent = LlmAgent(

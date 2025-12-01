@@ -1,8 +1,44 @@
 """
-Architecture Design Agent
+Architecture Design Agent Module
+=================================
 
-Designs GCP infrastructure architecture based on requirements.
-Uses gcloud tools to validate service compatibility.
+This agent is the second in the sequential pipeline. It receives structured
+requirements and designs the optimal GCP infrastructure architecture.
+
+ADK Features Demonstrated:
+--------------------------
+1. LlmAgent - Agent powered by an LLM (Gemini 2.5 Flash Lite)
+2. Sequential agent pattern - receives output from Requirements Agent
+3. Structured JSON output for reliable inter-agent communication
+
+Agent Role in Pipeline:
+-----------------------
+    Requirements JSON -> [Architecture Agent] -> Architecture Specification
+    
+The Architecture Agent acts as a cloud architect, making decisions about:
+- Which GCP services to use for each requirement
+- How services should interconnect
+- Terraform module structure and organization
+- Resource dependencies and deployment order
+- Security considerations (VPCs, IAM, private networking)
+
+Example Output Structure:
+-------------------------
+{
+    "architecture_name": "web-api-infrastructure",
+    "modules": [
+        {"module_name": "vpc", "purpose": "Network infrastructure", ...},
+        {"module_name": "cloud_run", "purpose": "API backend", ...}
+    ],
+    "deployment_order": ["vpc", "iam", "cloud_sql", "cloud_run"]
+}
+
+Design Decisions:
+-----------------
+- Separates infrastructure into reusable Terraform modules
+- Considers security best practices (private IPs, minimal IAM)
+- Outputs deployment order based on resource dependencies
+- Uses pure LLM reasoning (no external tools)
 """
 
 import json
@@ -16,16 +52,39 @@ logger = logging.getLogger(__name__)
 
 def create_architecture_agent(retry_config: types.HttpRetryOptions) -> LlmAgent:
     """
-    Create the Architecture Design Agent.
+    Create and configure the Architecture Design Agent.
     
-    This agent specializes in designing GCP infrastructure architecture
-    and determining the optimal module structure for Terraform.
+    This function creates an LlmAgent that acts as a senior cloud architect,
+    designing optimal GCP infrastructure from requirements specifications.
+    
+    ADK Features Used:
+    ------------------
+    - LlmAgent: Core ADK agent class for LLM-powered reasoning
+    - Gemini model: Uses Gemini 2.5 Flash Lite for fast inference
+    - Sequential pattern: Receives output from Requirements Agent
+    - Structured output: Produces JSON architecture specification
+    
+    Agent Responsibilities:
+    -----------------------
+    1. Analyze requirements to identify optimal GCP services
+    2. Design module structure for reusable Terraform code
+    3. Define resource dependencies and deployment order
+    4. Consider networking (VPC, subnets, firewall rules)
+    5. Plan IAM (service accounts, roles, permissions)
+    
+    Best Practices Applied:
+    -----------------------
+    - Separate concerns into distinct modules (vpc, compute, data)
+    - Use module outputs as inputs to dependent modules
+    - Include proper resource dependencies
+    - Consider security: private IPs, minimal IAM permissions
+    - Plan for high availability where appropriate
     
     Args:
-        retry_config: HTTP retry configuration for the LLM
+        retry_config: HttpRetryOptions for API retry configuration
         
     Returns:
-        Configured LlmAgent for architecture design
+        Configured LlmAgent instance for architecture design
     """
     
     agent = LlmAgent(

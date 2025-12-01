@@ -1,8 +1,38 @@
 """
-Orchestrator
+Orchestrator Module - Core Multi-Agent Orchestration System
+============================================================
 
-Main orchestrator for the Terraform Generator multi-agent system.
-Manages the message passing sequence between agents.
+This module implements the central orchestration logic for the TerraformAI
+multi-agent system. It coordinates five specialized agents in a sequential
+pipeline with an innovative validation feedback loop.
+
+ADK Features Demonstrated:
+--------------------------
+1. MULTI-AGENT SYSTEM: Five LLM-powered agents working in sequence
+2. SEQUENTIAL AGENTS: Requirements -> Architecture -> Generator -> Validator -> Documentation
+3. LOOP AGENTS: Generator-Validator feedback loop with iterative refinement
+4. SESSIONS & MEMORY: InMemorySessionService for persistent context
+5. STATE MANAGEMENT: Shared session between Generator and Validator
+6. OBSERVABILITY: Comprehensive logging of every orchestration phase
+
+Architecture:
+-------------
+    User Input -> Requirements Agent -> Architecture Agent -> 
+    Generator Agent <-> Validator Agent (Loop) -> Documentation Agent -> Output
+
+The key innovation is the validation loop where Generator and Validator
+share a session, enabling the system to learn from mistakes and iteratively
+improve until code passes validation (up to max_validation_iterations cycles).
+
+Usage:
+------
+    from src.orchestrator import TerraformGeneratorOrchestrator
+    
+    orchestrator = TerraformGeneratorOrchestrator(
+        output_dir="./output",
+        max_validation_iterations=20
+    )
+    result = await orchestrator.run("Create a web app with Cloud Run and PostgreSQL")
 """
 
 import os
@@ -45,48 +75,148 @@ class TerraformGeneratorOrchestrator:
     """
     Orchestrates the multi-agent system for Terraform code generation.
     
-    Implements the message passing sequence:
-    User → Requirements → Architecture → Generator → Validator → (loop) → Documentation
+    This class implements the core orchestration logic that coordinates five
+    specialized agents in a sequential pipeline with a validation feedback loop.
+    
+    Design Pattern: Sequential Pipeline with Loop
+    ---------------------------------------------
+    The orchestrator follows a message-passing architecture where each agent
+    receives input from the previous agent and produces structured output
+    for the next agent. The Generator-Validator pair implements a loop pattern
+    for iterative quality improvement.
+    
+    Message Flow:
+    -------------
+        1. User Input (natural language) -> Requirements Agent
+        2. Requirements JSON -> Architecture Agent  
+        3. Architecture Spec -> Generator Agent
+        4. Terraform Code -> Validator Agent
+        5. [If validation fails] Feedback -> Generator Agent (LOOP)
+        6. [If validation passes] Validated Code -> Documentation Agent
+        7. Final Output: Terraform files + Documentation
+    
+    ADK Integration:
+    ----------------
+    - Uses ADK's LlmAgent for each specialized agent
+    - Uses ADK's Runner for async execution
+    - Uses ADK's InMemorySessionService for conversation persistence
+    - Implements retry logic with exponential backoff via HttpRetryOptions
+    
+    Session Management (Key Feature):
+    ---------------------------------
+    The Generator and Validator agents share a session ("validation_loop"),
+    enabling the Generator to access its previous attempts and the Validator's
+    feedback. This context persistence is essential for iterative improvement.
+    
+    Attributes:
+        output_dir: Directory to save generated Terraform files and docs
+        max_validation_iterations: Maximum validation/regeneration cycles
+        session_service: ADK InMemorySessionService for conversation history
+        requirements_runner: Runner for requirements extraction
+        architecture_runner: Runner for architecture design
+        generator_runner: Runner for Terraform generation
+        validator_runner: Runner for code validation
+        documentation_runner: Runner for documentation generation
+    
+    Example:
+        orchestrator = TerraformGeneratorOrchestrator(
+            output_dir="./output",
+            max_validation_iterations=20
+        )
+        result = await orchestrator.run("Create a web app with Cloud Run")
     """
     
     def __init__(self, output_dir: str = "./output", max_validation_iterations: int = 20):
         """
-        Initialize the orchestrator.
+        Initialize the orchestrator with agents, runners, and session management.
+        
+        This constructor sets up the complete multi-agent system:
+        1. Creates five specialized agents (Requirements, Architecture, Generator, Validator, Documentation)
+        2. Configures retry logic for API resilience
+        3. Initializes InMemorySessionService for conversation persistence
+        4. Creates Runner instances for each agent with shared session service
         
         Args:
-            output_dir: Directory to save generated files
-            max_validation_iterations: Maximum number of validation/regeneration cycles (default: 20)
+            output_dir: Directory to save generated files (default: "./output")
+            max_validation_iterations: Maximum validation/regeneration cycles (default: 20)
+                Higher values allow more attempts to fix validation errors but
+                increase total execution time.
+        
+        Note on Session Design:
+            All agents share the same InMemorySessionService instance, but use
+            different session_id values. Critically, the Generator and Validator
+            agents use the same session_id ("validation_loop") to enable memory
+            sharing during the feedback loop.
         """
         self.output_dir = output_dir
         self.max_validation_iterations = max_validation_iterations
         
-        # Create output directory
+        # Create output directory structure for generated Terraform files
         os.makedirs(output_dir, exist_ok=True)
         
-        # Configure retry options for all agents
+        # Configure retry options for API resilience
+        # ADK Feature: HttpRetryOptions provides automatic retry with exponential backoff
+        # This handles transient failures and rate limiting from the Gemini API
         self.retry_config = types.HttpRetryOptions(
-            attempts=5,
-            exp_base=7,
-            initial_delay=1,
-            http_status_codes=[429, 500, 503, 504]
+            attempts=5,           # Maximum retry attempts
+            exp_base=7,           # Exponential backoff base
+            initial_delay=1,      # Initial delay in seconds
+            http_status_codes=[429, 500, 503, 504]  # Retryable status codes
         )
         
-        # Initialize agents
+        # ==================================================================
+        # AGENT INITIALIZATION
+        # ==================================================================
+        # Create five specialized agents, each with a specific role in the
+        # Terraform generation pipeline. Each agent is an LlmAgent powered
+        # by Gemini 2.5 Flash Lite, configured with role-specific instructions.
+        # ==================================================================
         logger.info("Initializing agents...")
+        
+        # Agent 1: Requirements Extraction
+        # Parses natural language input and extracts structured requirements
         self.requirements_agent = create_requirements_agent(self.retry_config)
+        
+        # Agent 2: Architecture Design
+        # Designs GCP infrastructure topology and Terraform module structure
         self.architecture_agent = create_architecture_agent(self.retry_config)
+        
+        # Agent 3: Terraform Generator
+        # Generates complete, modular Terraform code from architecture specs
         self.generator_agent = create_generator_agent(self.retry_config)
+        
+        # Agent 4: Validator/Critic
+        # Analyzes code for errors, security issues, and best practices
         self.validator_agent = create_validator_agent(self.retry_config)
+        
+        # Agent 5: Documentation
+        # Creates README and deployment documentation
         self.documentation_agent = create_documentation_agent(self.retry_config)
         
-        # Initialize session service for memory persistence
+        # ==================================================================
+        # SESSION SERVICE INITIALIZATION
+        # ==================================================================
+        # ADK Feature: InMemorySessionService provides conversation persistence
+        # This is essential for the validation loop where Generator and Validator
+        # need to share context and remember previous attempts.
+        # ==================================================================
         logger.info("Initializing session service...")
         from google.adk.sessions import InMemorySessionService
         self.session_service = InMemorySessionService()
         
-        # Create persistent runners with session service
-        # Each runner will maintain conversation history via session_id
-        # Using app_name="agents" to match the agent directory structure
+        # ==================================================================
+        # RUNNER CREATION WITH SHARED SESSION SERVICE
+        # ==================================================================
+        # ADK Feature: Runner provides async execution of agents
+        # Each Runner is configured with:
+        #   - The specialized agent instance
+        #   - app_name="agents" (for directory structure)
+        #   - Shared session_service (enables session persistence)
+        #
+        # CRITICAL DESIGN: All runners share the same session_service,
+        # but use different session_id values when invoked. The Generator
+        # and Validator specifically share session_id="validation_loop".
+        # ==================================================================
         self.requirements_runner = Runner(
             agent=self.requirements_agent,
             app_name="agents",
@@ -97,6 +227,9 @@ class TerraformGeneratorOrchestrator:
             app_name="agents",
             session_service=self.session_service
         )
+        
+        # Generator and Validator runners - these will share session_id="validation_loop"
+        # during execution to enable memory sharing in the feedback loop
         self.generator_runner = Runner(
             agent=self.generator_agent,
             app_name="agents",
@@ -107,6 +240,7 @@ class TerraformGeneratorOrchestrator:
             app_name="agents",
             session_service=self.session_service
         )
+        
         self.documentation_runner = Runner(
             agent=self.documentation_agent,
             app_name="agents",
@@ -334,10 +468,41 @@ Output all Terraform files in JSON format with proper structure."""
         architecture: Dict[str, Any]
     ) -> tuple[Dict[str, Any], Dict[str, Any]]:
         """
-        Validation loop with feedback and regeneration.
+        Implements the Generator-Validator feedback loop for iterative code improvement.
         
+        This is the KEY INNOVATION of the system - a loop agent pattern where:
+        1. Generator produces Terraform code
+        2. Validator analyzes for errors and returns structured feedback
+        3. Generator receives feedback AND has session memory of previous attempts
+        4. Generator regenerates, learning from past mistakes
+        5. Loop continues until validation passes or max iterations reached
+        
+        ADK Feature - Shared Session Memory:
+        ------------------------------------
+        Both Generator and Validator use session_id="validation_loop", which means:
+        - Generator can see its previous code attempts in conversation history
+        - Generator can see previous validation errors and feedback
+        - This accumulated context enables learning and improvement over iterations
+        
+        Without shared sessions, the Generator would have no memory of what it
+        tried before, leading to repeated mistakes. With sessions, each iteration
+        builds on previous knowledge.
+        
+        Design Rationale:
+        -----------------
+        - Maximum iterations prevents infinite loops on unsolvable problems
+        - Structured feedback (ValidatorOutput) ensures clear communication
+        - Early exit on success optimizes for the common case
+        - Detailed logging provides observability into the refinement process
+        
+        Args:
+            terraform_code: Initial generated Terraform code from Generator
+            architecture: Architecture specification for context
+            
         Returns:
-            Tuple of (validated_code, validation_results)
+            Tuple of:
+                - validated_code: Final Terraform code (may still have errors if max iterations reached)
+                - validation_results: ValidatorOutput with status and any remaining errors
         """
         current_code = terraform_code
         iteration = 0

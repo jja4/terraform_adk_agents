@@ -1,8 +1,38 @@
 """
-Requirements Extraction Agent
+Requirements Extraction Agent Module
+=====================================
 
-Parses natural language descriptions and extracts structured requirements
-for GCP infrastructure.
+This agent is the first in the sequential pipeline. It parses natural language
+descriptions of infrastructure needs and extracts structured requirements.
+
+ADK Features Demonstrated:
+--------------------------
+1. LlmAgent - Agent powered by an LLM (Gemini 2.5 Flash Lite)
+2. Custom instruction prompt engineering for structured JSON output
+3. Pure LLM reasoning without tools (tools=[])
+
+Agent Role in Pipeline:
+-----------------------
+    User Input (Natural Language) -> [Requirements Agent] -> Requirements JSON
+    
+Example:
+    Input:  "Create a web application with Cloud Run and PostgreSQL"
+    Output: {
+        "application_name": "web-app",
+        "components": [
+            {"type": "compute", "service": "cloud_run", ...},
+            {"type": "database", "service": "cloud_sql", ...}
+        ],
+        "environment": "prod",
+        ...
+    }
+
+Design Decisions:
+-----------------
+- Uses structured JSON output for reliable parsing
+- Infers reasonable defaults for unspecified requirements
+- Extracts both explicit and implicit infrastructure needs
+- Validates output format with parse_requirements() function
 """
 
 import json
@@ -18,16 +48,43 @@ logger = logging.getLogger(__name__)
 
 def create_requirements_agent(retry_config: types.HttpRetryOptions) -> LlmAgent:
     """
-    Create the Requirements Extraction Agent.
+    Create and configure the Requirements Extraction Agent.
     
-    This agent specializes in parsing natural language descriptions and
-    extracting structured requirements for infrastructure.
+    This function creates an LlmAgent specialized in parsing natural language
+    infrastructure descriptions and extracting structured requirements.
+    
+    ADK Features Used:
+    ------------------
+    - LlmAgent: Core ADK agent class powered by an LLM
+    - Gemini model: Uses Gemini 2.5 Flash Lite for fast, cost-effective inference
+    - HttpRetryOptions: Automatic retry with exponential backoff for API resilience
+    - Pure reasoning: No tools needed - agent uses LLM reasoning to parse text
+    
+    Agent Behavior:
+    ---------------
+    1. Receives natural language description (e.g., "Create a web app...")
+    2. Parses text to identify infrastructure components
+    3. Infers reasonable defaults for unspecified requirements
+    4. Outputs structured JSON specification
+    
+    Prompt Engineering:
+    -------------------
+    The instruction prompt is carefully crafted to:
+    - Enforce JSON-only output (no explanatory text)
+    - Provide clear schema with examples
+    - Guide the LLM to infer missing details
+    - Ensure consistent output format
     
     Args:
-        retry_config: HTTP retry configuration for the LLM
+        retry_config: HttpRetryOptions for API retry configuration
         
     Returns:
-        Configured LlmAgent for requirements extraction
+        Configured LlmAgent instance for requirements extraction
+    
+    Example:
+        agent = create_requirements_agent(retry_config)
+        # Agent will parse: "Create a web app with Cloud Run"
+        # Into structured JSON with compute, networking requirements
     """
     
     agent = LlmAgent(
@@ -138,14 +195,33 @@ def parse_requirements(agent_response: str) -> Dict[str, Any]:
     """
     Parse the agent's response and extract the JSON requirements.
     
+    This function handles the extraction and validation of JSON from the
+    LLM's response, which may include markdown code blocks or other formatting.
+    
+    JSON Extraction Strategy:
+    -------------------------
+    1. Check for ```json code blocks (preferred LLM output format)
+    2. Check for generic ``` code blocks
+    3. Fall back to raw text parsing
+    
+    Error Handling:
+    ---------------
+    If JSON parsing fails, raises ValueError with the first 500 characters
+    of the response for debugging.
+    
     Args:
-        agent_response: The text response from the agent
+        agent_response: The raw text response from the agent
         
     Returns:
-        Parsed requirements dictionary
+        Parsed requirements dictionary with keys:
+        - application_name: str
+        - components: List[dict]
+        - environment: str
+        - regions: List[str]
+        - estimated_scale: dict
         
     Raises:
-        ValueError: If the response is not valid JSON
+        ValueError: If the response cannot be parsed as valid JSON
     """
     # Try to extract JSON from the response
     response = agent_response.strip()
