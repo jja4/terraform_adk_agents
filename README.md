@@ -1,5 +1,9 @@
 # TerraformAI: Multi-Agent Infrastructure as Code Generator
 
+<p align="center">
+  <img src="docs/images/TerraformAI_thumbnail.jpg" alt="TerraformAI - Multi-Agent Infrastructure as Code Generator" width="800">
+</p>
+
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Google ADK](https://img.shields.io/badge/Google-ADK-4285F4?logo=google)](https://google.github.io/adk-docs/)
 [![Terraform](https://img.shields.io/badge/Terraform-1.5+-844FBA?logo=terraform)](https://www.terraform.io/)
@@ -99,10 +103,13 @@ flowchart TD
     V -->|Validated Code| D
     D --> O
 
-    style A fill:#e1f5ff
-    style O fill:#c8e6c9
-    style V fill:#fff9c4
-    style G fill:#fff9c4
+    style A fill:#1565C0,stroke:#0D47A1,color:#FFFFFF
+    style R fill:#7B1FA2,stroke:#4A148C,color:#FFFFFF
+    style P fill:#00838F,stroke:#006064,color:#FFFFFF
+    style G fill:#E65100,stroke:#BF360C,color:#FFFFFF
+    style V fill:#F9A825,stroke:#F57F17,color:#000000
+    style D fill:#2E7D32,stroke:#1B5E20,color:#FFFFFF
+    style O fill:#388E3C,stroke:#2E7D32,color:#FFFFFF
 ```
 
 ### Message Passing Sequence
@@ -728,9 +735,11 @@ flowchart TD
     V3 -->|Pass| D[Documentation Agent]
     V3 -->|Fail| G
     
-    style V1 fill:#fff9c4
-    style V2 fill:#c8e6c9
-    style V3 fill:#bbdefb
+    style G fill:#E65100,stroke:#BF360C,color:#FFFFFF
+    style V1 fill:#F9A825,stroke:#F57F17,color:#000000
+    style V2 fill:#2E7D32,stroke:#1B5E20,color:#FFFFFF
+    style V3 fill:#1565C0,stroke:#0D47A1,color:#FFFFFF
+    style D fill:#388E3C,stroke:#2E7D32,color:#FFFFFF
 ```
 
 **Three-Tier Validation:**
